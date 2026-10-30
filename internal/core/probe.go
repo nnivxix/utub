@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/nnivxix/utub/internal/media"
@@ -126,10 +125,8 @@ func parseProbe(stdout []byte, ref media.Ref) (media.MediaInfo, error) {
 	}, nil
 }
 
-// probeFailure turns a non-zero exit into something a person can read.
-//
-// TODO(M1.6): classify stderr into ErrBotCheck / ErrPrivate / ErrGeoBlocked /
-// ErrAgeRestricted / ErrHTTPStatus and attach the hint each one needs.
+// probeFailure turns a non-zero exit into something a person can read, keeping
+// the classified sentinel and the exit error in the chain.
 func probeFailure(url string, stderr []byte, err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return fmt.Errorf("core: probe %s: timed out after %s", url, probeTimeout)
@@ -137,18 +134,5 @@ func probeFailure(url string, stderr []byte, err error) error {
 	if errors.Is(err, context.Canceled) {
 		return fmt.Errorf("core: probe %s: canceled", url)
 	}
-	if line := firstLineOf(stderr); line != "" {
-		return fmt.Errorf("core: probe %s: %s: %w", url, line, err)
-	}
-	return fmt.Errorf("core: probe %s: %w", url, err)
-}
-
-// firstLineOf returns the first non-empty, trimmed line of a multi-line output.
-func firstLineOf(b []byte) string {
-	for _, line := range strings.Split(string(b), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			return line
-		}
-	}
-	return ""
+	return wrapCLI("core: probe", url, stderr, err)
 }
