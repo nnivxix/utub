@@ -185,14 +185,17 @@ never renders a resolution it cannot honour.
 Fallback chain, mandatory because individual itags are sometimes withheld:
 
 ```
-bv*[vcodec^=avc1][height=N]+ba[ext=m4a]
+<id>+ba[ext=m4a]                     the picked itag, so the fps choice sticks
+/bv*[vcodec^=avc1][height=N]+ba[ext=m4a]
 /bv*[vcodec^=avc1][height<=N]+ba[ext=m4a]
 /b[vcodec^=avc1][height<=N]
 /bv*[vcodec^=avc1]+ba
 ```
 
-The last alternative may yield a non-MP4 result; when it fires the engine sets
-`Event.Warn` and the UI shows a warning instead of silently producing an unplayable file.
+The last alternative may yield a non-MP4 result. Selection is pure and cannot know which
+alternative yt-dlp will actually use, so it warns when the request itself cannot be honoured
+(unknown height, or above the 1080p ceiling) via `Event.Warn`; the download stage adds the
+runtime check once yt-dlp reports the streams it picked.
 
 Reversible only by changing the code: H.264 is the single video policy in v1.
 

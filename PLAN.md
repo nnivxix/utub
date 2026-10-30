@@ -51,7 +51,7 @@ downloaded by this codebase.
 | 7 | TUI foundation (home, router, keys, styles) | done |
 | 8 | TUI screens (formats, progress, settings) | done, 32 tests |
 | 9 | wrap: fmt/vet/test, docs truth-up, commits | done |
-| **M1** | **engine: probe / select / download / progress / errors / manager** | **← NEXT, nothing started** |
+| **M1** | **engine: probe / select / download / progress / errors / manager** | **M1.1–M1.2 done (probe + select); M1.3 next** |
 | M3 | TUI complete (real data, probing state, real cancel) | blocked on M1 |
 | M4 | `internal/api` + `cmd/utubd` | not started |
 | M5 | Vue 3 SPA (`web/`) | not started |
@@ -193,14 +193,16 @@ Work in two reviewable halves. Do M1.1–M1.3 first (visible payoff: real data i
   `private.json` (capture with `yt-dlp -J … > file.json`).
 - **Gate:** table tests map all four fixtures; no network in `go test`.
 
-#### M1.2 `core/select.go` — format → `-f` (~0.5 d)
+#### M1.2 `core/select.go` — format → `-f` — **done**
 
 - `Selector(req Request) (expr string, warn string)` — pure, no I/O.
-- Chain: `bv*[vcodec^=avc1][height=N]+ba[ext=m4a]` → `…[height<=N]…` → `b[vcodec^=avc1][height<=N]`
-  → `bv*[vcodec^=avc1]+ba`, preceded by the exact picked itag so the fps choice is honoured.
-- `AudioArgs(cfg)` for `-x --audio-format mp3|m4a --audio-quality …`; `original` = no `-x`.
-- `warn` non-empty only when the final fallback is what will run → surfaces as `Event.Warn`.
-- **Gate:** table test asserts the exact string for every (tab × format × codec policy × audio format).
+- Chain: the exact picked itag, then `bv*[vcodec^=avc1][height=N]+ba[ext=m4a]` → `…[height<=N]…`
+  → `b[vcodec^=avc1][height<=N]` → `bv*[vcodec^=avc1]+ba`. Verified live: when an itag is
+  withheld the chain falls through cleanly (a `137` pin became `299+140`).
+- `AudioArgs(cfg)` for `-x --audio-format mp3|m4a --audio-quality 0`; `original` = no `-x`.
+  An m4a target prefers `ba[ext=m4a]/ba/b` so it can remux instead of re-encoding opus.
+- `warn` (→ `Event.Warn`) only for an unknown height or a request above the 1080p ceiling.
+- **Gate:** table tests assert the exact string for every format and audio format; covered.
 
 #### M1.3 Wire probe into the TUI (M3 part 1, ~0.5 d)
 
@@ -333,7 +335,7 @@ go build ./... && go vet ./... && go test ./...
 Then:
 
 1. Read `docs/architecture.md` §5–§7 (seam, pipeline, download invocation) — it is the contract.
-2. Start **M1.1** (`internal/core/probe.go`). Do not touch `internal/tui` until M1.3.
+2. Start **M1.3** (wire `Manager.Probe` into the TUI). Do not touch `download.go` until the picker shows real data.
 3. After each M1.x: `gofmt -l .`, `go vet ./...`, `go test ./...`, then commit with the existing
    `type(scope): summary` style.
 4. Run the TUI through a pty (script pattern in the session log) after any TUI-visible change —
