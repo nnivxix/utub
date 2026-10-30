@@ -6,15 +6,19 @@ Paste a link, pick a format, download it — chunked, in parallel, straight to `
 No browser, no ads, no Electron.
 
 ```
- utub ─────────────────────────────────────────────  ~/Downloads
- Paste a YouTube or YouTube Music link
+utub dev ────────────────────────────────────────────────── ~/Downloads
+Paste a YouTube or YouTube Music link
 
- › https://youtu.be/dQw4w9WgXcQ▌
+╭──────────────────────────────────────────────────────────────────╮
+│ › https://youtu.be/dQw4w9WgXcQ                                   │
+╰──────────────────────────────────────────────────────────────────╯
+✓ youtube · dQw4w9WgXcQ
 
- enter probe · s settings · ? help · q quit
+enter select · ctrl+v paste link · ctrl+u clear · ctrl+s settings · esc back
 ```
 
-> **Status:** early scaffolding. The TUI is being built first (milestone M1–M3); the web and
+> **Status:** the TUI is built end-to-end — home, format picker, progress, settings — but it
+> runs on demo data. The engine (probe, download, cancel) is milestone **M1**; the web and
 > desktop surfaces are specified but not started. See [Roadmap](#roadmap).
 
 ---
@@ -126,7 +130,7 @@ starts.
 
 | Surface | Status | How |
 |---|---|---|
-| **TUI** (`utub`) | in progress | Bubble Tea |
+| **TUI** (`utub`) | screens done, engine pending (M1) | Bubble Tea v2 |
 | **Web** (`utubd`) | specified → [web/README.md](web/README.md) | self-hosted, Vue 3 SPA, `127.0.0.1:8080`, bearer token |
 | **Desktop** | specified → [desktop/README.md](desktop/README.md) | Wails v3, same SPA, no open port |
 

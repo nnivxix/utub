@@ -1,13 +1,19 @@
 BIN := bin
 GO  ?= go
 
-.PHONY: all tui web server desktop test fmt vet clean
+.PHONY: all tui web server desktop run doctor test fmt vet clean
 
 all: tui web server desktop
 
 tui:
 	@mkdir -p $(BIN)
 	$(GO) build -trimpath -o $(BIN)/utub ./cmd/utub
+
+run: tui
+	./$(BIN)/utub
+
+doctor:
+	$(GO) run ./cmd/utub --doctor
 
 web:
 	@echo "not yet — M5 (Vue 3 SPA in web/)"

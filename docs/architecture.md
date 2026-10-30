@@ -1,8 +1,10 @@
 # Architecture
 
-Status: **design doc / spec**. Written before the code (step 0). Later steps are checked
-against this document; if a step contradicts it, the step stops and this file is amended
-deliberately.
+Status: **design doc / spec**. Written before the code (step 0). Steps 0-9 are complete —
+the skeleton, config, media, platform, binmgr and every TUI screen exist; `internal/core` still
+returns `ErrNotImplemented` and the picker/progress run on demo data. **M1 is next.** Later
+work is checked against this document; if a step contradicts it, the step stops and this file
+is amended deliberately.
 
 Module: `github.com/nnivxix/utub` · Go 1.27 · macOS/Linux/Windows
 
@@ -232,24 +234,24 @@ same-origin.
 
 ## 11. Milestone map
 
-| # | Deliverable |
-|---|---|
-| 0 | docs (this file, `web/README.md`, `desktop/README.md`) |
-| 1 | repo skeleton |
-| 2 | `internal/config` |
-| 3 | `internal/platform` |
-| 4 | `internal/media` |
-| 5 | `internal/core` (interfaces + stubs) |
-| 6 | `internal/binmgr` |
-| 7 | TUI foundation |
-| 8 | TUI screens |
-| 9 | wrap: fmt, vet, test, first commit |
-| M1 | `core` probe/select/download/progress — real behaviour |
-| M3 | TUI complete |
-| M4 | `internal/api` + `utubd` |
-| M5 | Vue SPA |
-| M6 | Wails desktop |
-| M7 | release |
+| # | Deliverable | Status |
+|---|---|---|
+| 0 | docs (this file, `web/README.md`, `desktop/README.md`) | done |
+| 1 | repo skeleton | done |
+| 2 | `internal/config` | done |
+| 3 | `internal/platform` | done |
+| 4 | `internal/media` | done |
+| 5 | `internal/core` (interfaces + stubs) | done |
+| 6 | `internal/binmgr` | done |
+| 7 | TUI foundation | done |
+| 8 | TUI screens | done |
+| 9 | wrap: fmt, vet, test, commit | done |
+| M1 | `core` probe/select/download/progress — real behaviour | **next** |
+| M3 | TUI complete: real data, probing state, cancel kills the process group | blocked on M1 |
+| M4 | `internal/api` + `utubd` | not started |
+| M5 | Vue SPA | not started |
+| M6 | Wails desktop | not started |
+| M7 | release | not started |
 
 ## 12. Deliberately out of scope (v1)
 
