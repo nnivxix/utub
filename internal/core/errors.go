@@ -13,6 +13,13 @@ var (
 
 	// ErrFinished means the job already reached a terminal state.
 	ErrFinished = errors.New("core: job already finished")
+
+	// ErrBadProbe means yt-dlp's output could not be understood: JSON that does
+	// not parse, or a video object with no formats.
+	ErrBadProbe = errors.New("core: could not read yt-dlp output")
+
+	// ErrNoFormats means the video exists but offers nothing downloadable.
+	ErrNoFormats = errors.New("core: yt-dlp reported no formats")
 )
 
 // TODO(M1): stderr classification lives here.

@@ -33,21 +33,22 @@ func (k Kind) String() string {
 
 // Format is one downloadable stream as reported by yt-dlp.
 type Format struct {
-	ID            string  `json:"format_id"`
-	Ext           string  `json:"ext"`
-	VCodec        string  `json:"vcodec"`
-	ACodec        string  `json:"acodec"`
-	Width         int     `json:"width"`
-	Height        int     `json:"height"`
-	FPS           float64 `json:"fps"`
-	TBR           float64 `json:"tbr"` // total bitrate, kbit/s
-	ABR           float64 `json:"abr"` // audio bitrate, kbit/s
-	VBR           float64 `json:"vbr"`
-	AudioChannels int     `json:"audio_channels"`
-	FileSize      int64   `json:"filesize"`
-	DynamicRange  string  `json:"dynamic_range"`
-	FormatNote    string  `json:"format_note"`
-	Language      string  `json:"language"`
+	ID             string  `json:"format_id"`
+	Ext            string  `json:"ext"`
+	VCodec         string  `json:"vcodec"`
+	ACodec         string  `json:"acodec"`
+	Width          int     `json:"width"`
+	Height         int     `json:"height"`
+	FPS            float64 `json:"fps"`
+	TBR            float64 `json:"tbr"` // total bitrate, kbit/s
+	ABR            float64 `json:"abr"` // audio bitrate, kbit/s
+	VBR            float64 `json:"vbr"`
+	AudioChannels  int     `json:"audio_channels"`
+	FileSize       int64   `json:"filesize"`        // exact, when the server reports it
+	FileSizeApprox int64   `json:"filesize_approx"` // estimate, when it does not
+	DynamicRange   string  `json:"dynamic_range"`
+	FormatNote     string  `json:"format_note"`
+	Language       string  `json:"language"`
 }
 
 // Kind reports which streams the format carries.
@@ -132,6 +133,9 @@ func (f Format) Label() string {
 func (f Format) EstimateSize(dur time.Duration) int64 {
 	if f.FileSize > 0 {
 		return f.FileSize
+	}
+	if f.FileSizeApprox > 0 {
+		return f.FileSizeApprox
 	}
 	rate := f.TBR
 	if rate <= 0 {
