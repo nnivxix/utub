@@ -1,10 +1,10 @@
 # Architecture
 
-Status: **design doc / spec**. Written before the code (step 0). Steps 0-9 are complete —
-the skeleton, config, media, platform, binmgr and every TUI screen exist; `internal/core` still
-returns `ErrNotImplemented` and the picker/progress run on demo data. **M1 is next.** Later
-work is checked against this document; if a step contradicts it, the step stops and this file
-is amended deliberately.
+Status: **design doc / spec**, kept true as milestones land. Steps 0-9 are complete; M1 is
+nearly done — probe, format selection, the download executor, the progress parser, error
+classification and the job manager all exist and are tested. Only M1.8 (wire the real event
+stream into the TUI) and the live acceptance run remain. Later work is checked against this
+document; if a step contradicts it, the step stops and this file is amended deliberately.
 
 Module: `github.com/nnivxix/utub` · Go 1.27 · macOS/Linux/Windows
 
@@ -118,6 +118,11 @@ Each surface is a thin consumer of that channel:
 
 Progress ticks are coalesced to ~10 Hz before leaving the engine, so a fast download cannot
 flood a terminal or a websocket.
+
+A **cancelled** job has no terminal `Event`: `Event` carries no cancellation signal and a
+cancellation is not an error. Its stream just closes, and a reader that must tell "done" from
+"cancelled" after the close reads `Job.State()`. The manager records `StateCanceled` before it
+signals the process group, so the non-zero exit caused by SIGTERM cannot flip the job to failed.
 
 **There is exactly one progress parser and one state machine.** Surfaces never compute
 progress themselves.
@@ -268,7 +273,7 @@ same-origin.
 | 7 | TUI foundation | done |
 | 8 | TUI screens | done |
 | 9 | wrap: fmt, vet, test, commit | done |
-| M1 | `core` probe/select/download/progress — real behaviour | probe, select, errors done; download/progress/manager next |
+| M1 | `core` probe/select/download/progress/errors/manager — real behaviour | done except TUI wiring (M1.8) and the live acceptance run |
 | M3 | TUI complete: real data, probing state, cancel kills the process group | probing + real formats done; downloads pending M1.8 |
 | M4 | `internal/api` + `utubd` | not started |
 | M5 | Vue SPA | not started |

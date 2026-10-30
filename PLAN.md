@@ -3,10 +3,6 @@
 > **What this file is.** A single source of truth so a fresh session (human or AI) can resume
 > exactly where the previous one stopped. Read §2 (status), §7 (remaining work) and §10
 > (how to continue) before touching code.
->
-> **Note on location.** Written while the agent was in Plan mode, which restricts writes to
-> `~/.opencode/plan/`. When a build agent picks this up, copy it into the repo root as
-> `PLAN.md` (`cp ~/.opencode/plan/PLAN.md ./PLAN.md`) so it travels with the code.
 
 Last updated: 2026-10-30 · Repo: `/Users/hanasa/Labs/personal/utub` · Branch: `main` (clean)
 
@@ -35,10 +31,11 @@ Full design rationale: `docs/architecture.md` (it is the spec; this file is the 
 
 ## 2. Status snapshot
 
-**Done: steps 0–9 and M1.1–M1.3 + M1.6.** Skeleton, config, media, platform, binmgr, the
-`core` seam, every TUI screen, real probing with a spinner, format selection and classified
-engine errors. **The picker now shows real YouTube formats; downloads are still simulated** —
-no bytes have been written by this codebase yet.
+**Done: steps 0–9 and M1.1–M1.7.** Skeleton, config, media, platform, binmgr, the
+`core` seam, every TUI screen, real probing with a spinner, format selection, classified
+engine errors, the progress parser, the subprocess runner and the real job manager.
+**The engine can download; the TUI still shows simulated progress** — wiring the channel
+into the progress screen is M1.8, and no bytes have been written *by the TUI* yet.
 
 | # | Deliverable | State |
 |---|---|---|
@@ -52,8 +49,8 @@ no bytes have been written by this codebase yet.
 | 7 | TUI foundation (home, router, keys, styles) | done |
 | 8 | TUI screens (formats, progress, settings) | done, 32 tests |
 | 9 | wrap: fmt/vet/test, docs truth-up, commits | done |
-| **M1** | **engine: probe / select / download / progress / errors / manager** | **M1.1–M1.3 and M1.6 done; M1.4 next** |
-| M3 | TUI complete (real data, probing state, real cancel) | blocked on M1 |
+| **M1** | **engine: probe / select / download / progress / errors / manager** | **M1.1–M1.7 done; M1.8 next** |
+| M3 | TUI complete (real data, probing state, real cancel) | M1.8 next |
 | M4 | `internal/api` + `cmd/utubd` | not started |
 | M5 | Vue 3 SPA (`web/`) | not started |
 | M6 | Wails v3 desktop (`desktop/`) | not started |
@@ -74,15 +71,19 @@ e0f4475  chore: project skeleton
 8ccc92c  docs: architecture spec, web/desktop surface plans, root README
 ```
 
-Scale: ~5,900 lines of Go across `internal/` + `cmd/`, 94 test functions, 7 packages green.
+Scale: ~5,100 lines of Go across `internal/` + `cmd/` (+ ~4,800 test lines), 167 test
+functions, 7 packages green.
 
 **What actually works today:** `--doctor`, `--version`, the full TUI navigation, real settings
 persistence to `config.toml`, real URL validation (all YouTube URL shapes), real `yt-dlp -J`
-probing behind a spinner (with cancel and readable failures), H.264-only format selection, and
-a simulated progress screen.
+probing behind a spinner (with cancel and readable failures), H.264-only format selection,
+and a real engine that can download: argv, process-group cancel, resume-friendly `.part`
+files, a 10 Hz coalesced event stream and a job registry (`Start`/`Cancel`/`List`) whose ids
+and states are safe for the future HTTP surface.
 
-**What is fake today:** `core.Start`, `core.Cancel`, `core.List` (they return `ErrNotImplemented`),
-the demo ticker in the progress screen, and byte progress.
+**What is fake today:** only the TUI progress screen — `demoTick`/`advance` and its demo
+filename guess. `core.Manager` itself is real; `NoopManager`/`ErrNotImplemented` remain for
+the not-yet-written API and desktop surfaces.
 
 ---
 
@@ -126,10 +127,11 @@ cmd/utubd/.gitkeep          empty — M4
 internal/core/              THE ENGINE SEAM (must import no UI)
   doc.go                    package doc + layer rule + M1 file map
   event.go                  Stage, State, Event, PercentUnknown, Event.Terminal()
-  job.go                    Request, Job, private state machine (first terminal state wins)
-  manager.go                Manager interface (Probe/Start/Cancel/List), NoopManager
-  errors.go                 sentinels + TODO(M1) stderr classification table
-  probe.go  select.go  download.go  progress.go     ← comment-only TODO(M1) checklists
+  job.go                    Request (incl. probed Source), Job, private state machine
+  manager.go                Manager interface, NoopManager, Engine (registry + run loop)
+  errors.go                 sentinels + stderr classification table
+  probe.go  select.go       yt-dlp -J → MediaInfo; format → -f chain
+  download.go  progress.go  argv, subprocess lifecycle, parser, coalescer
 internal/media/             Format/Kind/MediaInfo, H.264 classification, size estimates,
                             URL validation (watch/youtu.be/shorts/live/embed/music), share-text
 internal/config/            Config struct ↔ config.toml, defaults, atomic save, dir resolution
@@ -141,7 +143,7 @@ internal/tui/               Bubble Tea v2
   formats.go                Video/Audio tabs, H.264 rows, ★ best
   progress.go               stage bars, speed/ETA, apply(core.Event) already wired
   settings.go               huh v2 form → config.toml
-  demo.go                   demoMedia() — the only fake data source, TODO(M1)
+  demo.go                   demoMedia() — now only the offline/demo fallback
   keys.go styles.go msgs.go
 internal/api/.gitkeep       empty — M4
 web/README.md               spec only
@@ -160,19 +162,25 @@ docs/architecture.md        the design spec (milestone table has a Status column
 3. **One state machine** (`job.go`): `Pending → Running → Done|Failed|Canceled`; the first
    terminal transition wins, so a non-zero exit after a cancel cannot resurrect a job as failed.
 4. **Progress ticks are coalesced to ~10 Hz** before leaving the engine.
-5. **The engine never guesses the output filename.** M1 must read yt-dlp's own
-   `[download] Destination:` / `[Merger] Merging formats into "…"` lines.
+5. **The engine never guesses the output filename.** It reads yt-dlp's own
+   `[download] Destination:` / `[Merger] Merging formats into "…"` / `[MoveFiles]` lines.
 6. **H.264 policy lives in `internal/media`**, not in the picker: `VideoFormats()`.
    The UI only renders what it is given and prints the 1080p ceiling.
+7. **The manager owns job identity and the terminal frame.** The executor emits events with
+   no `JobID` and its own `StageDone` is suppressed by `Engine.run`, which records the final
+   state and output path *before* publishing the terminal event, so a reader that reacts to
+   the closed channel never sees a half-final job.
+8. **A cancelled job ends by closing its stream, not with an `Event`.** `Event` carries no
+   cancellation signal; readers that must distinguish done from cancelled call `Job.State()`.
 
 ### Exact TODO(M1) locations
 
 | Marker | File | Replace with |
 |---|---|---|
-| demo formats | `internal/tui/demo.go` `demoMedia()` | replaced by `Manager.Probe` in the picker (M1.3); demo data remains the progress fallback until M1.8 |
-| demo progress | `internal/tui/progress.go` `demoTick`/`advance` | `Manager.Start` + `<-chan Event` |
-| `NoopManager` | `cmd/utub/main.go` `runTUI()` | replaced by `core.Engine` (M1.3); Start/Cancel fill in at M1.7 |
-| core stubs | `internal/core/{probe,select,download,progress}.go` | probe + select + errors done; download/progress remain |
+| demo formats | `internal/tui/demo.go` `demoMedia()` | picker already uses `Manager.Probe` (M1.3); demo data is the offline fallback |
+| demo progress | `internal/tui/progress.go` `demoTick`/`advance` | `Manager.Start` + `<-chan Event` (M1.8) |
+| engine wiring | `cmd/utub/main.go` `newEngine()` | done in M1.7: binaries resolved through `binmgr.Locate` |
+| core stubs | `internal/core/*.go` | all implemented; `NoopManager`/`ErrNotImplemented` remain only for surfaces not built yet |
 
 ---
 
@@ -180,9 +188,10 @@ docs/architecture.md        the design spec (milestone table has a Status column
 
 ### M1 — the engine (~4 days). **Everything else is blocked on this.**
 
-Work in two reviewable halves. Do M1.1–M1.3 first (visible payoff: real data in the picker).
+M1.1–M1.7 are done. Only M1.8 (wire the real event stream into the TUI) and the acceptance
+run below remain.
 
-#### M1.1 `core/probe.go` — `yt-dlp -J` → `MediaInfo` (~0.5 d)
+#### M1.1 `core/probe.go` — `yt-dlp -J` → `MediaInfo` — **done**
 
 - Add a test seam: `type runner func(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)`,
   injected into the prober — same pattern as `platform/clipboard.go`. Keeps tests offline.
@@ -212,11 +221,12 @@ Work in two reviewable halves. Do M1.1–M1.3 first (visible payoff: real data i
   any result that arrives late.
 - `probeDoneMsg` / `probeErrMsg` come from a `tea.Cmd` calling `Manager.Probe`; a failure
   returns to home with a readable sentence and a retry hint.
-- `Deps.Manager` is `core.Engine`, which probes for real and stubs the download half until M1.7.
+- `Deps.Manager` is `core.Engine`; in M1.7 `cmd/utub` began resolving the binaries through
+  `binmgr.Locate` and filling in `Prober.Bin` / `Executor.Bin` / `Executor.Aria2c`.
 - **Gate:** covered by router tests plus a live pty run (spinner → real formats); classified
   failures are exercised with canned errors.
 
-#### M1.4 `core/progress.go` — template parser + coalescer (~0.5 d)
+#### M1.4 `core/progress.go` — template parser + coalescer — **done**
 
 - Template (already documented in the stub): `download:DL %(progress.downloaded_bytes)s …`
 - Tolerate `NA`, empty, missing trailing fields; `fragment_index/fragment_count` when bytes unknown.
@@ -224,7 +234,7 @@ Work in two reviewable halves. Do M1.1–M1.3 first (visible payoff: real data i
 - `coalesce(<-chan Event, 10*time.Hour/3600*…)` at 10 Hz; terminal event must never be dropped.
 - **Gate:** 15+ parser cases + coalescer test (N inputs → ≤ expected ticks, terminal survives).
 
-#### M1.5 `core/download.go` — argv + subprocess (~1 d)
+#### M1.5 `core/download.go` — argv + subprocess — **done**
 
 - `Args(req Request) []string` pure and fully tested: `-f`, `-P home:<OutDir>`, `-P temp:<OutDir>/.utub-tmp`,
   `-o <FilenameTemplate>`, `--newline --no-colors`, `--progress-template …`, `--concurrent-fragments`,
@@ -243,17 +253,27 @@ so `errors.Is` works for both. Rule order is explicit: "Sign in to confirm your 
 age-restriction before the bot-check needle.
 **Gate:** table tests from real stderr samples; covered.
 
-#### M1.7 `core/manager.go` — the real Manager (~0.75 d)
+#### M1.7 `core/manager.go` — the real Manager — **done**
 
-- Job registry (`map[string]*Job` + mutex); `Start` spawns a goroutine and returns a buffered,
-  lossy channel closed after the terminal event.
-- `Cancel`: ctx cancel + process-group kill → `StateCanceled`. `ErrNotFound` / `ErrFinished` semantics
-  already pinned by `core_test.go`.
-- `Request` gains the probed `media.MediaInfo` so `Start` never re-probes (needs a small interface change — **confirm with the user**).
-- Add `config.CookiesFromBrowser` + `--cookies-from-browser` plumbing.
-- **Gate:** two concurrent jobs tracked independently; cancel of a finished job → `ErrFinished`; `go test -race`.
+- Job registry (`map[string]*Job` + mutex, creation order for `List`); `Start` validates
+  synchronously (URL, `OutDir` → `ErrBadOutDir`, forced aria2c), registers the job **before**
+  the goroutine starts, and returns a buffered, lossy channel that closes after the terminal
+  event. Progress samples are dropped when the consumer is behind; the terminal event is not.
+- `Cancel`: records `StateCanceled` first, then cancels the ctx, which makes `Executor.Run`
+  SIGTERM/SIGKILL the process group. `ErrNotFound` / `ErrFinished` as pinned by `core_test.go`;
+  a second cancel of a cancelled job is `ErrFinished`.
+- `Request` gained `Source media.MediaInfo` (open decision §9.1 → yes), so `Start` never
+  re-probes and `Job.Source` carries the picker's metadata.
+- `Engine.run` owns the terminal frame: it suppresses the executor's `StageDone`, records the
+  state/path, then publishes it — a reader that reacts to the closed channel always sees a
+  final job. A cancelled job simply closes the stream (see contract 8).
+- `config.CookiesFromBrowser` / `--cookies-from-browser` was already plumbed in M1.5.
+- `cmd/utub` builds the engine from `binmgr.Locate`, in `main.go`'s `newEngine()`.
+- **Gate:** two concurrent jobs tracked independently, cancel of a finished job → `ErrFinished`,
+  process **and grandchild** die on cancel, `.part` survives, coalescing holds through the
+  manager, `go test -race ./...` green.
 
-#### M1.8 Wire downloads into the TUI (M3 part 2, ~0.5 d)
+#### M1.8 Wire downloads into the TUI (M3 part 2, ~0.5 d) — **next**
 
 - Replace `demoTick` with a goroutine reading `<-chan core.Event` → `tea.Msg`.
 - `esc` → `Manager.Cancel(jobID)`; quit-while-downloading cancels all jobs first (no orphaned children).
@@ -315,14 +335,24 @@ goreleaser for `utub` + `utubd`; `make web`; brew formula; dmg/msi; README final
 - **Test the seams, not the tools:** `platform` injects a `runner`, `binmgr` probes fake shell scripts
   on a private `PATH`. Do the same for `core` (M1.1).
 - **`go vet` copylocks:** `Job` and `homeModel` contain mutexes/sub-models; pass pointers or return copies.
+- **M1.7, terminal-frame ordering:** the executor emits no `JobID` and its `StageDone` is suppressed
+  by `Engine.run`; the manager records the final state and path, *then* publishes the terminal event.
+  Otherwise a reader that reacts to the closed channel can see an empty `OutputPath`.
+- **M1.7, cancellation is not an event:** `Event` has no cancelled field, so a cancelled job ends by
+  closing its stream. Read `Job.State()` on close. The state is recorded before the process-group
+  SIGTERM, so the non-zero exit cannot flip a cancelled job to failed.
+- **M1.7, fast jobs produce few samples:** the coalescer drops a pending sample when the terminal
+  event arrives, so a download that finishes inside one 100 ms window may show only "video" then
+  "done". That is the intended behaviour, not a parser bug.
 
 ---
 
 ## 9. Open decisions (ask before assuming)
 
-1. **`Request` carrying `MediaInfo`** (M1.7) — a deliberate interface change; get a yes.
-2. **M1 granularity** — the user prefers one step per approval. Confirm whether to land M1.1–M1.3
-   as one review, or each separately.
+1. ~~**`Request` carrying `MediaInfo`**~~ — **resolved in M1.7**: `Request.Source` carries the
+   probe result; `Start` never re-probes and `Job.Source` exposes it.
+2. **M1 granularity** — the user prefers one step per approval; M1.4, M1.5 and M1.7 each landed
+   as their own commit. Keep doing that for M1.8.
 3. **Desktop before web?** — recommendation stands: web (M4+M5) first, because Wails then reuses the
    SPA and the API for free.
 
@@ -332,18 +362,20 @@ goreleaser for `utub` + `utubd`; `make web`; brew formula; dmg/msi; README final
 
 ```bash
 cd /Users/hanasa/Labs/personal/utub
-git log --oneline -3          # expect 4563b61 at HEAD when resuming
+git log --oneline -3          # expect the M1.7 commit at HEAD when resuming
 git status --short            # expect clean
-go build ./... && go vet ./... && go test ./...
+go build ./... && go vet ./... && go test -race ./...
 ./bin/utub --doctor           # or: make doctor
 ```
 
 Then:
 
 1. Read `docs/architecture.md` §5–§7 (seam, pipeline, download invocation) — it is the contract.
-2. Start **M1.4** (`internal/core/progress.go`), or M1.5 if the progress parser needs the argv first.
-3. After each M1.x: `gofmt -l .`, `go vet ./...`, `go test ./...`, then commit with the existing
-   `type(scope): summary` style.
+2. Start **M1.8** (`internal/tui/progress.go`): replace `demoTick` with a goroutine reading
+   `Manager.Start`'s channel, make `esc` call `Manager.Cancel`, and keep the demo behind `--demo`.
+   Remember that a cancelled job ends by closing the channel — check `job.State()` on close.
+3. After each M1.x: `gofmt -l .`, `go vet ./...`, `go test -race ./...`, then commit with the
+   existing `type(scope): summary` style.
 4. Run the TUI through a pty (script pattern in the session log) after any TUI-visible change —
    unit tests cannot see layout or startup panics.
 5. Update this file's §2 table and `docs/architecture.md`'s Status column when a milestone lands.

@@ -18,13 +18,14 @@
 //
 // # Status
 //
-// Step 5 provides the seam only — types, the Manager interface and a Noop
-// implementation, so the TUI can be built against a stable contract. Real
-// behaviour arrives in M1:
+// The engine is complete except for the TUI wiring of downloads (M1.8):
 //
 //	probe.go     yt-dlp -J  →  media.MediaInfo
 //	select.go    chosen format  →  -f expression with fallback chain
 //	download.go  argv build, subprocess lifecycle, process-group kill, resume
 //	progress.go  --progress-template parser, coalesced to ~10 Hz
 //	errors.go    stderr → typed, human-readable failures
+//	manager.go   the job registry: Start, Cancel, List and the event stream
+//
+// NoopManager and ErrNotImplemented remain for surfaces that are not built yet.
 package core

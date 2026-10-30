@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/nnivxix/utub/internal/media"
 )
 
 func TestStageString(t *testing.T) {
@@ -213,8 +215,9 @@ func TestNoopManagerReturnsErrNotImplemented(t *testing.T) {
 	}
 }
 
-// TestEngineProbeDelegatesToTheProber pins the seam the TUI now uses: Engine is
-// a real Manager for probing, with the download half still unimplemented.
+// TestEngineProbeDelegatesToTheProber pins the seam the TUI uses: Engine probes
+// through the injected Prober, and Start rejects an empty request before it can
+// spawn anything.
 func TestEngineProbeDelegatesToTheProber(t *testing.T) {
 	t.Parallel()
 
@@ -232,8 +235,8 @@ func TestEngineProbeDelegatesToTheProber(t *testing.T) {
 		t.Errorf("ran %d commands, want 1", len(calls))
 	}
 
-	if _, _, err := engine.Start(Request{}); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("Start() error = %v, want ErrNotImplemented until M1.7", err)
+	if _, _, err := engine.Start(Request{}); !errors.Is(err, media.ErrEmptyURL) {
+		t.Errorf("Start() error = %v, want media.ErrEmptyURL for an empty request", err)
 	}
 }
 

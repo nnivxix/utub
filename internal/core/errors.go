@@ -43,6 +43,11 @@ var (
 	// ErrNoOutputPath means the download exited successfully but yt-dlp never
 	// reported where it put the file, so the engine refuses to guess.
 	ErrNoOutputPath = errors.New("core: yt-dlp did not report an output file")
+
+	// ErrBadOutDir means the download directory in the request is missing or
+	// is not a directory. Start checks this up front so a deleted folder fails
+	// before a subprocess is spawned, not halfway through.
+	ErrBadOutDir = errors.New("core: download directory is not usable")
 )
 
 // cliFailure is one classified yt-dlp failure: the sentinel a caller matches

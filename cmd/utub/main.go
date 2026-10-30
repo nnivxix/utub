@@ -67,7 +67,7 @@ func runTUI() int {
 	}
 
 	deps := tui.Deps{
-		Manager: &core.Engine{},
+		Manager: newEngine(),
 		Config:  cfg,
 		DestDir: dir,
 		Version: version,
@@ -77,6 +77,27 @@ func runTUI() int {
 		return 1
 	}
 	return 0
+}
+
+// newEngine resolves the sidecar binaries once, so probing and downloading use
+// the same paths and the executor can auto-upgrade to aria2c when it exists.
+// A missing binary is not fatal here: the first probe or download reports it as
+// a readable error, and --doctor is the place that exits non-zero.
+func newEngine() *core.Engine {
+	ctx, cancel := context.WithTimeout(context.Background(), doctorTimeout)
+	defer cancel()
+
+	set := binmgr.Locate(ctx)
+
+	engine := &core.Engine{}
+	if set.YTDLP.Available() {
+		engine.Prober.Bin = set.YTDLP.Path
+		engine.Executor.Bin = set.YTDLP.Path
+	}
+	if set.Aria2c.Available() {
+		engine.Executor.Aria2c = set.Aria2c.Path
+	}
+	return engine
 }
 
 func usage() {

@@ -126,6 +126,16 @@ func (e Executor) useAria2c(cfg config.Config) bool {
 	}
 }
 
+// validate reports configuration problems that can be detected without
+// spawning anything. Start calls it too, so a misconfiguration surfaces at the
+// call site instead of as the first event on a channel.
+func (e Executor) validate(req Request) error {
+	if req.Config.Downloader == config.DownloaderAria2c && e.Aria2c == "" {
+		return ErrMissingAria2c
+	}
+	return nil
+}
+
 // Run downloads one request, reporting progress through emit, which may be nil.
 //
 // Emitted events carry no JobID: the manager owns identity and fills it in.
@@ -139,8 +149,13 @@ func (e Executor) useAria2c(cfg config.Config) bool {
 // SIGKILL after killGracePeriod. .part files are left alone so --continue
 // resumes them.
 func (e Executor) Run(ctx context.Context, req Request, emit func(Event)) (Result, error) {
-	if req.Config.Downloader == config.DownloaderAria2c && e.Aria2c == "" {
-		return Result{}, ErrMissingAria2c
+	if err := e.validate(req); err != nil {
+		return Result{}, err
+	}
+	// A job cancelled before it reached the executor must not spawn a child,
+	// even briefly: on Windows a kill of a not-yet-started process is racy.
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
 	}
 
 	bin := e.Bin

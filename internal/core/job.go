@@ -18,6 +18,14 @@ type Request struct {
 	Format media.Format // the row the user picked
 	OutDir string       // absolute path, already validated
 	Config config.Config
+
+	// Source is the probe result the user picked Format from. Carrying it
+	// means Start never re-runs `yt-dlp -J`: the surface already paid that
+	// cost, and a second probe can disagree with the rows on screen.
+	//
+	// It is optional. A zero MediaInfo is allowed (an API caller may start a
+	// job from a bare itag), but then Job.Source carries no metadata.
+	Source media.MediaInfo
 }
 
 // Job is one download. The exported fields are immutable after creation; all
@@ -69,7 +77,9 @@ func (j *Job) Err() error {
 	return j.err
 }
 
-// start marks the job running. Called once the subprocess has been spawned.
+// start marks the job running. Called once the job's goroutine takes ownership,
+// which is a moment before the subprocess is spawned, so a job is never
+// observed as pending while a child could already exist.
 func (j *Job) start() {
 	j.mu.Lock()
 	defer j.mu.Unlock()
