@@ -48,7 +48,8 @@ The trade-off is stated in the UI rather than hidden: YouTube only serves H.264 
 
 - Paste a YouTube or YouTube Music URL — `youtube.com`, `youtu.be`, `shorts`, `music.youtube.com`
 - Format list with resolution, fps, codec, container and estimated size
-- Video (H.264/MP4) and Audio (original / M4A / MP3) tabs
+- Video (H.264/MP4) and Audio tabs — source streams plus an MP3 row per quality
+- Cover art embedded into MP3/M4A when the site has a thumbnail
 - **Parallel chunked downloads**: 16 concurrent DASH fragments, ranged HTTP chunks, and
   automatic multi-connection upgrade when `aria2c` is installed
 - Live progress: per-stage bars (video → audio → merge), speed, ETA
@@ -123,6 +124,7 @@ http_chunk_size      = "10M"
 downloader           = "auto"        # auto | builtin | aria2c
 filename_template    = "%(title)s [%(id)s].%(ext)s"
 default_audio_format = "original"    # original | m4a | mp3
+embed_thumbnail      = true          # cover art in MP3/M4A when the site has a thumbnail
 cookies_from_browser  = ""           # "", safari, chrome, firefox, … (for bot checks)
 ```
 

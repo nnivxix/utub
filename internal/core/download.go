@@ -72,7 +72,8 @@ func (e Executor) Args(req Request) []string {
 	// Audio extraction flags only make sense for an audio request; -x on a
 	// video would produce an audio file.
 	if audioOnly {
-		args = append(args, AudioArgs(req.Config)...)
+		args = append(args, AudioArgs(req)...)
+		args = append(args, ThumbnailArgs(req)...)
 	}
 
 	args = append(args,

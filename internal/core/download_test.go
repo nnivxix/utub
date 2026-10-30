@@ -78,8 +78,11 @@ func TestExecutorArgsAudio(t *testing.T) {
 	if containsSequence(got, "--merge-output-format", "mp4") {
 		t.Errorf("audio request should not merge into mp4: %q", got)
 	}
-	if !containsSequence(got, "-f", "ba/b") {
+	if !containsSequence(got, "-f", "140/ba/b") {
 		t.Errorf("audio selector missing from %q", got)
+	}
+	if !containsSequence(got, "--embed-thumbnail") {
+		t.Errorf("cover-art flag missing from %q", got)
 	}
 	if got[len(got)-1] != req.URL {
 		t.Errorf("URL must be last, got %q", got)
@@ -97,6 +100,9 @@ func TestExecutorArgsAudioOriginalSkipsExtraction(t *testing.T) {
 	}
 	if containsSequence(got, "--audio-format") {
 		t.Errorf("original audio must not pass --audio-format: %q", got)
+	}
+	if containsSequence(got, "--embed-thumbnail") {
+		t.Errorf("original opus cannot carry cover art: %q", got)
 	}
 }
 

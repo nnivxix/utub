@@ -49,6 +49,35 @@ type Format struct {
 	DynamicRange   string  `json:"dynamic_range"`
 	FormatNote     string  `json:"format_note"`
 	Language       string  `json:"language"`
+
+	// TargetExt is the container the finished file will have when the row is a
+	// conversion yt-dlp does not serve itself (the picker's MP3 rows). Empty
+	// means "keep the source container". It is never decoded from yt-dlp.
+	TargetExt string `json:"-"`
+}
+
+// Output returns the container the downloaded file will have: the conversion
+// target when the row carries one, otherwise the source container.
+func (f Format) Output() string {
+	if f.TargetExt != "" {
+		return f.TargetExt
+	}
+	return f.Ext
+}
+
+// OutputFor returns the container an audio download will have under the given
+// default audio format ("original", "m4a" or "mp3"). A row with its own target
+// always wins, then a converting default rewrites the container, and otherwise
+// the source container is kept.
+func (f Format) OutputFor(defaultFormat string) string {
+	if f.TargetExt != "" {
+		return f.TargetExt
+	}
+	switch defaultFormat {
+	case "m4a", "mp3":
+		return defaultFormat
+	}
+	return f.Ext
 }
 
 // Kind reports which streams the format carries.
@@ -257,6 +286,34 @@ func AudioCandidates(formats []Format) []Format {
 		}
 		return extRank(out[i].Ext) < extRank(out[j].Ext)
 	})
+	return out
+}
+
+// AudioVariants returns the audio rows the picker shows: every source stream
+// from AudioCandidates plus an MP3 conversion of each quality, best first.
+//
+// yt-dlp never serves MP3, so an MP3 row keeps the best source stream for its
+// bitrate and sets TargetExt: the engine downloads that stream and converts it
+// with ffmpeg. One MP3 row per quality is enough — converting the m4a or the
+// webm stream at the same bitrate yields the same audio.
+func AudioVariants(formats []Format) []Format {
+	sources := AudioCandidates(formats)
+	out := make([]Format, 0, len(sources)*2)
+	seen := make(map[int]bool, len(sources))
+
+	for _, f := range sources {
+		out = append(out, f)
+
+		bucket := int(math.Round(f.ABR / 16))
+		if seen[bucket] {
+			continue
+		}
+		seen[bucket] = true
+
+		mp3 := f
+		mp3.TargetExt = "mp3"
+		out = append(out, mp3)
+	}
 	return out
 }
 

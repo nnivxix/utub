@@ -321,7 +321,7 @@ func (m progressModel) advance() (progressModel, tea.Cmd) {
 		if finished {
 			m.percent = 1
 			m.state = core.StateDone
-			m.output = filepath.Join(m.destDir, demoOutputName(m.info, m.format))
+			m.output = filepath.Join(m.destDir, demoOutputName(m.info, m.format, m.cfg.DefaultAudioFormat))
 			return m, nil
 		}
 		if next == core.StageMerge {
@@ -515,8 +515,11 @@ func shortETA(eta time.Duration) string {
 
 // demoOutputName guesses the filename the demo would produce. Real jobs report
 // the path from yt-dlp instead of guessing.
-func demoOutputName(info media.MediaInfo, format media.Format) string {
-	ext := format.Ext
+func demoOutputName(info media.MediaInfo, format media.Format, defaultAudioFormat string) string {
+	ext := format.Output()
+	if format.Kind() == media.KindAudioOnly {
+		ext = format.OutputFor(defaultAudioFormat)
+	}
 	if ext == "" {
 		ext = "mp4"
 	}

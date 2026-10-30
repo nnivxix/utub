@@ -223,6 +223,21 @@ runtime check once yt-dlp reports the streams it picked.
 
 Reversible only by changing the code: H.264 is the single video policy in v1.
 
+The audio tab lists the source streams yt-dlp reports plus one **MP3** row per quality.
+yt-dlp never serves MP3, so the row keeps the best source itag for that bitrate and sets
+`Format.TargetExt`: the engine downloads the source and adds `-x --audio-format mp3`.
+Picking an MP3 row overrides `default_audio_format` for that download only. When the default
+is already `mp3`, the source rows are the MP3 rows and no duplicates are added.
+
+Audio rows pin their itag (`140/ba[ext=m4a]/ba/b`), so the bitrate and container the picker
+promises are the ones downloaded; the filter chain is the fallback for withheld formats.
+
+When `embed_thumbnail` is on, the engine appends `--embed-thumbnail` for outputs that can
+carry cover art (`mp3` and `m4a`). yt-dlp attaches the site thumbnail — the album art on
+`music.youtube.com`, the video frame elsewhere — and skips the step when no thumbnail is
+reported. An untouched `webm`/Opus stream is excluded because yt-dlp refuses to embed into it;
+untouched m4a streams are included.
+
 ## 9. Configuration
 
 `os.UserConfigDir()/utub/config.toml` (macOS: `~/Library/Application Support/utub/`).
@@ -234,6 +249,7 @@ http_chunk_size      = "10M"
 downloader           = "auto"        # auto | builtin | aria2c
 filename_template    = "%(title)s [%(id)s].%(ext)s"
 default_audio_format = "original"    # original | m4a | mp3
+embed_thumbnail      = true          # cover art in MP3/M4A when a thumbnail exists
 cookies_from_browser  = ""           # empty = off; yt-dlp browser name when YouTube demands a sign-in
 ```
 
@@ -244,7 +260,8 @@ Writes are atomic (temp file + rename). The directory is validated at save time 
 at download time, so a deleted folder fails loudly rather than halfway through a job.
 
 The TUI settings screen edits `download_dir`, `concurrent_fragments`, `downloader`,
-`default_audio_format` and `cookies_from_browser`; the rest of the file is hand-edited.
+`default_audio_format`, `embed_thumbnail` and `cookies_from_browser`; the rest of the file is
+hand-edited.
 
 ## 10. Security model (web only)
 

@@ -57,6 +57,7 @@ type Config struct {
 	Downloader          string `toml:"downloader"`
 	FilenameTemplate    string `toml:"filename_template"`
 	DefaultAudioFormat  string `toml:"default_audio_format"`
+	EmbedThumbnail      bool   `toml:"embed_thumbnail"`
 	CookiesFromBrowser  string `toml:"cookies_from_browser"`
 }
 
@@ -69,6 +70,7 @@ func Default() Config {
 		Downloader:          DownloaderAuto,
 		FilenameTemplate:    DefaultFilenameTemplate,
 		DefaultAudioFormat:  AudioOriginal,
+		EmbedThumbnail:      true,
 	}
 }
 

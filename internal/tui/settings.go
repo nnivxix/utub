@@ -86,6 +86,12 @@ func (s *settingsModel) build() {
 				).
 				Value(&s.cfg.DefaultAudioFormat),
 
+			huh.NewConfirm().
+				Key("cover").
+				Title("Embed cover art").
+				Description("Add the site thumbnail as cover art when there is one (MP3/M4A only)").
+				Value(&s.cfg.EmbedThumbnail),
+
 			huh.NewSelect[string]().
 				Key("downloader").
 				Title("Downloader").

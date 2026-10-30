@@ -155,9 +155,12 @@ func TestSelectorAudio(t *testing.T) {
 		format media.Format
 		want   string
 	}{
-		{"original", config.AudioOriginal, audioRow("251", "webm"), "ba/b"},
-		{"m4a prefers an AAC source", config.AudioM4A, audioRow("140", "m4a"), "ba[ext=m4a]/ba/b"},
-		{"mp3 re-encodes from the best source", config.AudioMP3, audioRow("140", "m4a"), "ba/b"},
+		{"original", config.AudioOriginal, audioRow("251", "webm"), "251/ba/b"},
+		{"m4a prefers an AAC source", config.AudioM4A, audioRow("140", "m4a"), "140/ba[ext=m4a]/ba/b"},
+		{"mp3 re-encodes from the best source", config.AudioMP3, audioRow("140", "m4a"), "140/ba/b"},
+		{"an MP3 row overrides the m4a default", config.AudioM4A, media.Format{
+			ID: "251", Ext: "webm", VCodec: "none", ACodec: "opus", ABR: 160, TargetExt: "mp3",
+		}, "251/ba/b"},
 	}
 
 	for _, tc := range cases {
@@ -197,14 +200,30 @@ func TestAudioArgs(t *testing.T) {
 			cfg := config.Default()
 			cfg.DefaultAudioFormat = tc.in
 
-			if got := AudioArgs(cfg); !slices.Equal(got, tc.want) {
+			req := requestFor(audioRow("140", "m4a"), cfg)
+			if got := AudioArgs(req); !slices.Equal(got, tc.want) {
 				t.Errorf("AudioArgs(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}
 
-	if got := AudioArgs(config.Config{}); got != nil {
-		t.Errorf("AudioArgs(zero config) = %q, want nil", got)
+	if got := AudioArgs(Request{}); got != nil {
+		t.Errorf("AudioArgs(zero request) = %q, want nil", got)
+	}
+}
+
+// TestAudioArgsHonoursRowTarget proves an MP3 row converts even when the
+// configured default keeps the original stream.
+func TestAudioArgsHonoursRowTarget(t *testing.T) {
+	t.Parallel()
+
+	format := audioRow("251", "webm")
+	format.TargetExt = config.AudioMP3
+
+	req := requestFor(format, config.Default()) // default is "original"
+	want := []string{"-x", "--audio-format", "mp3", "--audio-quality", "0"}
+	if got := AudioArgs(req); !slices.Equal(got, want) {
+		t.Errorf("AudioArgs(mp3 row) = %q, want %q", got, want)
 	}
 }
 
@@ -216,8 +235,61 @@ func TestSelectorZeroConfigDefaultsToH264AndOriginalAudio(t *testing.T) {
 		t.Errorf("zero config expr =\n  %s\nwant\n  %s", expr, want)
 	}
 
-	if expr, _ := Selector(requestFor(audioRow("251", "webm"), config.Config{})); expr != "ba/b" {
-		t.Errorf("zero config audio expr = %q, want ba/b", expr)
+	if expr, _ := Selector(requestFor(audioRow("251", "webm"), config.Config{})); expr != "251/ba/b" {
+		t.Errorf("zero config audio expr = %q, want 251/ba/b", expr)
+	}
+}
+
+func TestThumbnailArgs(t *testing.T) {
+	t.Parallel()
+
+	mp3Row := audioRow("251", "webm")
+	mp3Row.TargetExt = config.AudioMP3
+
+	cases := []struct {
+		name   string
+		mutate func(*config.Config)
+		format media.Format
+		want   []string
+	}{
+		{"mp3 conversion can carry a cover",
+			func(c *config.Config) { c.DefaultAudioFormat = config.AudioMP3 },
+			audioRow("251", "webm"), []string{"--embed-thumbnail"}},
+		{"m4a conversion can carry a cover",
+			func(c *config.Config) { c.DefaultAudioFormat = config.AudioM4A },
+			audioRow("140", "m4a"), []string{"--embed-thumbnail"}},
+		{"an MP3 row embeds under an original default",
+			func(*config.Config) {}, mp3Row, []string{"--embed-thumbnail"}},
+		{"an untouched m4a stream can carry a cover",
+			func(*config.Config) {}, audioRow("140", "m4a"), []string{"--embed-thumbnail"}},
+		{"an untouched opus stream cannot",
+			func(*config.Config) {}, audioRow("251", "webm"), nil},
+		{"the setting turns embedding off",
+			func(c *config.Config) { c.DefaultAudioFormat = config.AudioMP3; c.EmbedThumbnail = false },
+			audioRow("251", "webm"), nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.Default()
+			tc.mutate(&cfg)
+
+			got := ThumbnailArgs(requestFor(tc.format, cfg))
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("ThumbnailArgs() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSelectorAudioWithoutItagFallsBack guards requests built from a bare
+// bitrate (no probe row): nothing can be pinned, so the filter chain stands.
+func TestSelectorAudioWithoutItagFallsBack(t *testing.T) {
+	t.Parallel()
+
+	format := audioRow("", "webm")
+	if expr, _ := Selector(requestFor(format, config.Default())); expr != "ba/b" {
+		t.Errorf("expr = %q, want ba/b", expr)
 	}
 }
 

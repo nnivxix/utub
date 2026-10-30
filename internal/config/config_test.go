@@ -27,8 +27,28 @@ func TestDefaultIsValid(t *testing.T) {
 	if cfg.ConcurrentFragments != DefaultConcurrentFragments {
 		t.Errorf("Default().ConcurrentFragments = %d, want %d", cfg.ConcurrentFragments, DefaultConcurrentFragments)
 	}
+	if !cfg.EmbedThumbnail {
+		t.Error("Default().EmbedThumbnail = false, want true")
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Default().Validate() = %v, want nil", err)
+	}
+}
+
+// TestLoadFromCanDisableThumbnailEmbedding proves the default is not sticky:
+// an explicit false in the file must survive the merge over Default().
+func TestLoadFromCanDisableThumbnailEmbedding(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("embed_thumbnail = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom error = %v", err)
+	}
+	if got.EmbedThumbnail {
+		t.Error("embed_thumbnail = false was ignored")
 	}
 }
 

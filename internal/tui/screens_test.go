@@ -19,7 +19,7 @@ import (
 func TestFormatsHidesNonH264(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{ID: "dQw4w9WgXcQ"})
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{ID: "dQw4w9WgXcQ"}, config.Default())
 	rows := m.rows()
 
 	if len(rows) == 0 {
@@ -41,7 +41,7 @@ func TestFormatsHidesNonH264(t *testing.T) {
 func TestFormatsPrefersVideoOnlyOverMuxed(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, config.Default())
 	for _, row := range m.rows() {
 		if row.ID == "18" {
 			t.Fatal("muxed 360p (18) should lose its bucket to video-only 134")
@@ -52,7 +52,7 @@ func TestFormatsPrefersVideoOnlyOverMuxed(t *testing.T) {
 func TestFormatsCursorClamps(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, config.Default())
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	if m.cursor != 0 {
@@ -70,7 +70,7 @@ func TestFormatsCursorClamps(t *testing.T) {
 func TestFormatsTabSwitchesAndResetsCursor(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, config.Default())
 	m.cursor = 3
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -80,15 +80,68 @@ func TestFormatsTabSwitchesAndResetsCursor(t *testing.T) {
 	if m.cursor != 0 {
 		t.Fatalf("cursor = %d, want reset to 0 after a tab switch", m.cursor)
 	}
-	if got := len(m.rows()); got != 2 {
-		t.Fatalf("audio rows = %d, want 2 (m4a, opus)", got)
+	// Two source streams (opus 160k, m4a 128k) plus an MP3 row per quality.
+	if got := len(m.rows()); got != 4 {
+		t.Fatalf("audio rows = %d, want 4 (opus, mp3, m4a, mp3)", got)
+	}
+}
+
+func TestFormatsAudioOffersMP3Rows(t *testing.T) {
+	t.Parallel()
+
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, config.Default())
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	rows := m.rows()
+	var mp3 []media.Format
+	for _, row := range rows {
+		if row.TargetExt == config.AudioMP3 {
+			mp3 = append(mp3, row)
+		}
+	}
+	if len(mp3) != 2 {
+		t.Fatalf("MP3 rows = %d, want one per source quality: %v", len(mp3), rows)
+	}
+	for _, row := range mp3 {
+		if row.Kind() != media.KindAudioOnly {
+			t.Errorf("MP3 row %s kind = %s, want audio-only", row.ID, row.Kind())
+		}
+		if row.Output() != "mp3" {
+			t.Errorf("MP3 row %s output = %q, want mp3", row.ID, row.Output())
+		}
+	}
+	if !strings.Contains(m.View(), "mp3") {
+		t.Errorf("audio view does not show an mp3 row:\n%s", m.View())
+	}
+}
+
+// TestFormatsAudioMP3DefaultHasNoDuplicateRows: when the configured default
+// already converts, every source row is the MP3 row.
+func TestFormatsAudioMP3DefaultHasNoDuplicateRows(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.DefaultAudioFormat = config.AudioMP3
+
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, cfg)
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	rows := m.rows()
+	if len(rows) != 2 {
+		t.Fatalf("audio rows = %d, want the 2 source rows only: %v", len(rows), rows)
+	}
+	for _, row := range rows {
+		if row.TargetExt != "" {
+			t.Errorf("row %s carries an explicit target %q under an mp3 default",
+				row.ID, row.TargetExt)
+		}
 	}
 }
 
 func TestFormatsEnterSelectsAndNavigates(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{ID: "dQw4w9WgXcQ"})
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{ID: "dQw4w9WgXcQ"}, config.Default())
 
 	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
@@ -113,7 +166,7 @@ func TestFormatsEnterSelectsAndNavigates(t *testing.T) {
 func TestFormatsAudioEnterCarriesAudioFormat(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, config.Default())
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 
 	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -123,10 +176,27 @@ func TestFormatsAudioEnterCarriesAudioFormat(t *testing.T) {
 	}
 }
 
+func TestFormatsAudioEnterCarriesMP3Target(t *testing.T) {
+	t.Parallel()
+
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, config.Default())
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m.cursor = 1 // the MP3 row right under the best source stream
+
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	nav := cmd().(navigateMsg)
+	if nav.format.TargetExt != config.AudioMP3 {
+		t.Fatalf("format target = %q, want %q", nav.format.TargetExt, config.AudioMP3)
+	}
+	if nav.format.Kind() != media.KindAudioOnly {
+		t.Fatalf("kind = %s, want audio-only", nav.format.Kind())
+	}
+}
+
 func TestFormatsViewStatesTheH264Limit(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, config.Default())
 	view := m.View()
 
 	if !strings.Contains(view, "H.264 · max 1080p") {
@@ -198,6 +268,28 @@ func TestProgressAudioOnlySkipsMerge(t *testing.T) {
 		}
 	}
 	t.Fatal("audio-only download never finished")
+}
+
+func TestProgressDemoMP3RowOutputsMP3(t *testing.T) {
+	t.Parallel()
+
+	info := demoMedia()
+	audio := media.AudioVariants(info.Formats)[1]
+	if audio.TargetExt != config.AudioMP3 {
+		t.Fatalf("row target = %q, want mp3", audio.TargetExt)
+	}
+
+	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, audio, info, "/tmp")
+	for range 200 {
+		m, _ = m.advance()
+		if m.state == core.StateDone {
+			if !strings.HasSuffix(m.output, ".mp3") {
+				t.Fatalf("output = %q, want an mp3", m.output)
+			}
+			return
+		}
+	}
+	t.Fatal("MP3 download never finished")
 }
 
 func TestProgressCancelIsSticky(t *testing.T) {
@@ -280,6 +372,7 @@ func TestSettingsSaveWritesConfig(t *testing.T) {
 
 	m.dir = dir
 	m.fragments = "8"
+	m.cfg.EmbedThumbnail = false // the confirm toggle binds straight to the working copy
 
 	m, cmd := m.save()
 	if m.errText != "" {
@@ -308,6 +401,9 @@ func TestSettingsSaveWritesConfig(t *testing.T) {
 	}
 	if loaded.ConcurrentFragments != 8 {
 		t.Fatalf("persisted fragments = %d, want 8", loaded.ConcurrentFragments)
+	}
+	if loaded.EmbedThumbnail {
+		t.Fatal("persisted embed_thumbnail = true, want the toggle's false")
 	}
 }
 

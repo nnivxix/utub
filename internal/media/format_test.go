@@ -237,6 +237,90 @@ func TestAudioCandidatesDedupesWithinContainerOnly(t *testing.T) {
 	}
 }
 
+func TestAudioVariantsInterleavesMP3(t *testing.T) {
+	formats := []Format{
+		audioOnly("251", "webm", "opus", 160),
+		audioOnly("140", "m4a", "mp4a.40.2", 128),
+		audioOnly("139", "m4a", "mp4a.40.2", 48),
+	}
+
+	got := AudioVariants(formats)
+	if len(got) != 6 {
+		t.Fatalf("AudioVariants returned %d rows, want 6 (source + mp3 per quality): %v", len(got), ids(got))
+	}
+
+	want := []struct {
+		id     string
+		output string
+	}{
+		{"251", "webm"},
+		{"251", "mp3"},
+		{"140", "m4a"},
+		{"140", "mp3"},
+		{"139", "m4a"},
+		{"139", "mp3"},
+	}
+	for i, w := range want {
+		if got[i].ID != w.id || got[i].Output() != w.output {
+			t.Errorf("row %d = (%s, %s), want (%s, %s)",
+				i, got[i].ID, got[i].Output(), w.id, w.output)
+		}
+	}
+}
+
+func TestAudioVariantsKeepsOneMP3PerQuality(t *testing.T) {
+	// m4a and webm at the same bitrate collapse into a single MP3 row.
+	formats := []Format{
+		audioOnly("webm", "webm", "opus", 128),
+		audioOnly("m4a", "m4a", "mp4a.40.2", 128),
+	}
+
+	got := AudioVariants(formats)
+	if len(got) != 3 {
+		t.Fatalf("AudioVariants returned %d rows, want 3 (two sources + one mp3): %v", len(got), ids(got))
+	}
+	if got[0].ID != "m4a" || got[0].Output() != "m4a" {
+		t.Errorf("first row = (%s, %s), want the AAC source", got[0].ID, got[0].Output())
+	}
+	if got[1].Output() != "mp3" || got[1].ID != "m4a" {
+		t.Errorf("second row = (%s, %s), want the MP3 conversion of the AAC source",
+			got[1].ID, got[1].Output())
+	}
+	for _, row := range got[2:] {
+		if row.TargetExt == "mp3" {
+			t.Errorf("row %s is a second MP3 row for the same quality", row.ID)
+		}
+	}
+}
+
+func TestFormatOutputFallsBackToSourceExt(t *testing.T) {
+	if got := (Format{Ext: "webm"}).Output(); got != "webm" {
+		t.Errorf("Output() = %q, want webm", got)
+	}
+	if got := (Format{Ext: "webm", TargetExt: "mp3"}).Output(); got != "mp3" {
+		t.Errorf("Output() = %q, want the target mp3", got)
+	}
+}
+
+func TestFormatOutputFor(t *testing.T) {
+	cases := []struct {
+		name   string
+		format Format
+		def    string
+		want   string
+	}{
+		{"original keeps the source container", Format{Ext: "webm"}, "original", "webm"},
+		{"m4a default rewrites the container", Format{Ext: "webm"}, "m4a", "m4a"},
+		{"mp3 default rewrites the container", Format{Ext: "webm"}, "mp3", "mp3"},
+		{"a row target wins over the default", Format{Ext: "m4a", TargetExt: "mp3"}, "m4a", "mp3"},
+	}
+	for _, tc := range cases {
+		if got := tc.format.OutputFor(tc.def); got != tc.want {
+			t.Errorf("%s: OutputFor(%q) = %q, want %q", tc.name, tc.def, got, tc.want)
+		}
+	}
+}
+
 func TestRecommend(t *testing.T) {
 	t.Run("prefers highest at or below 1080p", func(t *testing.T) {
 		video := VideoCandidates([]Format{

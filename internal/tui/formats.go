@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/nnivxix/utub/internal/config"
 	"github.com/nnivxix/utub/internal/media"
 )
 
@@ -31,6 +32,7 @@ type formatsModel struct {
 	keys keyMap
 	ref  media.Ref
 	info media.MediaInfo
+	cfg  config.Config
 
 	tab    formatTab
 	cursor int
@@ -38,20 +40,36 @@ type formatsModel struct {
 	height int
 }
 
-func newFormats(keys keyMap, info media.MediaInfo, ref media.Ref) formatsModel {
+func newFormats(keys keyMap, info media.MediaInfo, ref media.Ref, cfg config.Config) formatsModel {
 	return formatsModel{
 		keys: keys,
 		ref:  ref,
 		info: info,
+		cfg:  cfg,
 	}
 }
 
 // rows returns the visible rows for the active tab.
 func (m formatsModel) rows() []media.Format {
 	if m.tab == tabAudio {
-		return m.info.AudioFormats()
+		// When the default already converts to MP3, the source rows are the
+		// MP3 rows; adding more would duplicate every quality.
+		if m.cfg.DefaultAudioFormat == config.AudioMP3 {
+			return m.info.AudioFormats()
+		}
+		return media.AudioVariants(m.info.Formats)
 	}
 	return m.info.VideoFormats()
+}
+
+// outputExt is the container the finished file will have. Video requests keep
+// their source container; audio follows the row's conversion target and the
+// configured default.
+func (m formatsModel) outputExt(format media.Format) string {
+	if m.tab == tabAudio {
+		return format.OutputFor(m.cfg.DefaultAudioFormat)
+	}
+	return format.Output()
 }
 
 func (m formatsModel) selected() (media.Format, bool) {
@@ -182,7 +200,7 @@ func (m formatsModel) row(format media.Format, index int, best media.Format) str
 	}
 
 	line := fmt.Sprintf("%s%-10s %-4s %-7s %9s  %s",
-		marker, format.Label(), format.Ext, fps, size, badge)
+		marker, format.Label(), m.outputExt(format), fps, size, badge)
 
 	if selected {
 		return styleSelected.Render(strings.TrimRight(line, " "))
@@ -191,6 +209,12 @@ func (m formatsModel) row(format media.Format, index int, best media.Format) str
 }
 
 func (m formatsModel) footnote() string {
+	if m.tab == tabAudio {
+		if m.cfg.DefaultAudioFormat == config.AudioMP3 {
+			return "MP3 · every row is converted with ffmpeg"
+		}
+		return "MP3 rows are converted from the source stream with ffmpeg"
+	}
 	return "H.264 · max 1080p (higher resolutions are VP9/AV1 only)"
 }
 

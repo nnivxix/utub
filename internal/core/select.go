@@ -26,26 +26,45 @@ const audioQualityBest = "0"
 // The first alternative is the exact picked itag, so choosing 1080p30 does not
 // silently download the 60fps stream; the chain follows as the fallback.
 //
-// Audio-only requests use ba/b plus -x and an --audio-format derived from
-// Request.Config.DefaultAudioFormat.
+// Audio-only requests pin the picked itag when the probe reported one, then
+// fall back to ba/b, plus -x and an --audio-format derived from the row's
+// target or Request.Config.DefaultAudioFormat.
 //
 // The codec policy is fixed: H.264 (avc1) only. There is no configuration knob
 // in v1 — every video alternative carries the avc1 filter.
 func Selector(req Request) (expr string, warn string) {
 	if req.Format.Kind() == media.KindAudioOnly {
-		return audioSelector(req.Config), ""
+		return audioSelector(req), ""
 	}
 	return videoSelector(req)
 }
 
-// audioSelector picks the audio stream. An m4a target prefers an AAC source so
-// yt-dlp can remux instead of re-encoding opus to AAC; original and MP3 take
-// whatever has the best bitrate.
-func audioSelector(cfg config.Config) string {
-	if cfg.DefaultAudioFormat == config.AudioM4A {
-		return "ba[ext=m4a]/ba/b"
+// audioSelector picks the audio stream. The exact itag the user picked is
+// pinned first so a row keeps its promised bitrate and container; the filter
+// chain follows as the fallback. An m4a target prefers an AAC source so yt-dlp
+// can remux instead of re-encoding opus to AAC; original and MP3 take whatever
+// has the best bitrate.
+func audioSelector(req Request) string {
+	alts := make([]string, 0, 2)
+	if req.Format.ID != "" {
+		alts = append(alts, req.Format.ID)
 	}
-	return "ba/b"
+	if audioTarget(req) == config.AudioM4A {
+		alts = append(alts, "ba[ext=m4a]/ba/b")
+	} else {
+		alts = append(alts, "ba/b")
+	}
+	return strings.Join(alts, "/")
+}
+
+// audioTarget is the container the finished file will have: the row's explicit
+// target when the picker offered a conversion (an MP3 row), otherwise the
+// configured default.
+func audioTarget(req Request) string {
+	if req.Format.TargetExt != "" {
+		return req.Format.TargetExt
+	}
+	return req.Config.DefaultAudioFormat
 }
 
 // videoSelector builds the video chain. A request with no known height can only
@@ -101,11 +120,31 @@ func videoSelector(req Request) (expr string, warn string) {
 // AudioArgs returns the post-processing flags for an audio-only request.
 //
 // original keeps the source stream untouched; m4a and mp3 extract the audio and
-// re-encode it, so both need -x and an explicit format.
-func AudioArgs(cfg config.Config) []string {
-	switch cfg.DefaultAudioFormat {
+// re-encode it, so both need -x and an explicit format. A row with its own
+// target (the picker's MP3 rows) wins over the configured default.
+func AudioArgs(req Request) []string {
+	target := audioTarget(req)
+	switch target {
 	case config.AudioM4A, config.AudioMP3:
-		return []string{"-x", "--audio-format", cfg.DefaultAudioFormat, "--audio-quality", audioQualityBest}
+		return []string{"-x", "--audio-format", target, "--audio-quality", audioQualityBest}
+	default:
+		return nil
+	}
+}
+
+// ThumbnailArgs returns the flags that embed the site's thumbnail as cover art.
+//
+// Cover art is only requested for containers that can carry it (MP3 and M4A);
+// yt-dlp's post-processor rejects webm/opus, which is what an untouched
+// "original" download of an Opus stream keeps. yt-dlp skips the step when the
+// site reports no thumbnail, so "if available" needs no probing here.
+func ThumbnailArgs(req Request) []string {
+	if !req.Config.EmbedThumbnail {
+		return nil
+	}
+	switch req.Format.OutputFor(req.Config.DefaultAudioFormat) {
+	case config.AudioMP3, config.AudioM4A:
+		return []string{"--embed-thumbnail"}
 	default:
 		return nil
 	}

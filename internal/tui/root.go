@@ -113,7 +113,7 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		r.stopProbe()
 		r.ref = msg.ref
-		r.formats = newFormats(r.keys, msg.info, msg.ref)
+		r.formats = newFormats(r.keys, msg.info, msg.ref, r.deps.Config)
 		r.formats, _ = r.formats.Update(tea.WindowSizeMsg{Width: r.width, Height: r.height})
 		r.screen = screenFormats
 		return r, nil
