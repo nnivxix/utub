@@ -17,7 +17,7 @@ Paste a YouTube or YouTube Music link
 enter select · ctrl+v paste link · ctrl+u clear · ctrl+s settings · esc back
 ```
 
-> **⚠️ BETA - but usabale**
+> **⚠️ BETA - but usable**
 >
 > The interface is built (home, format picker, progress, settings) and navigation works, but it
 > runs on **demo data: nothing is downloaded**. The engine — probe, download, cancel — is the
