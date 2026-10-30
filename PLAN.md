@@ -89,7 +89,7 @@ Four `TODO(M1)` markers point at exactly these places (see §6).
 | Area | Decision | Why |
 |---|---|---|
 | Engine | sidecar `yt-dlp` + `ffmpeg`, never a pure-Go extractor | YouTube player changes would break a Go extractor weekly |
-| Video formats | **H.264 (`avc1`) only**, AAC/m4a audio, `--merge-output-format mp4` | plays/imports everywhere (QuickTime, iOS, browsers, Premiere, Resolve). YouTube only serves H.264 up to **1080p** — the UI states this instead of hiding it. Reversible via `video_codec = "any"` |
+| Video formats | **H.264 (`avc1`) only**, AAC/m4a audio, `--merge-output-format mp4` | plays/imports everywhere (QuickTime, iOS, browsers, Premiere, Resolve). YouTube only serves H.264 up to **1080p** — the UI states this instead of hiding it. The only policy in v1 |
 | Parallelism | `-N/--concurrent-fragments 16` + `--http-chunk-size 10M`, auto-upgrade to `aria2c -x16 -s16 -k1M` | DASH fragments are the real parallelism win; ranged requests cover progressive formats |
 | Config | TOML at `os.UserConfigDir()/utub/config.toml`, atomic write, `UTUB_CONFIG` override | |
 | Default dir | `~/Downloads` (macOS/Windows), `XDG_DOWNLOAD_DIR` on Linux | |
@@ -160,7 +160,7 @@ docs/architecture.md        the design spec (milestone table has a Status column
 4. **Progress ticks are coalesced to ~10 Hz** before leaving the engine.
 5. **The engine never guesses the output filename.** M1 must read yt-dlp's own
    `[download] Destination:` / `[Merger] Merging formats into "…"` lines.
-6. **H.264 policy lives in `internal/media`**, not in the picker: `VideoFormats(allowAny bool)`.
+6. **H.264 policy lives in `internal/media`**, not in the picker: `VideoFormats()`.
    The UI only renders what it is given and prints the 1080p ceiling.
 
 ### Exact TODO(M1) locations
@@ -197,7 +197,7 @@ Work in two reviewable halves. Do M1.1–M1.3 first (visible payoff: real data i
 
 - `Selector(req Request) (expr string, warn string)` — pure, no I/O.
 - Chain: `bv*[vcodec^=avc1][height=N]+ba[ext=m4a]` → `…[height<=N]…` → `b[vcodec^=avc1][height<=N]`
-  → `bv*[vcodec^=avc1]+ba`; `video_codec=any` drops the `avc1` filters.
+  → `bv*[vcodec^=avc1]+ba`, preceded by the exact picked itag so the fps choice is honoured.
 - `AudioArgs(cfg)` for `-x --audio-format mp3|m4a --audio-quality …`; `original` = no `-x`.
 - `warn` non-empty only when the final fallback is what will run → surfaces as `Event.Warn`.
 - **Gate:** table test asserts the exact string for every (tab × format × codec policy × audio format).

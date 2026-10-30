@@ -57,15 +57,6 @@ func (s *settingsModel) build() {
 					return nil
 				}),
 
-			huh.NewSelect[string]().
-				Key("codec").
-				Title("Video codec").
-				Options(
-					huh.NewOption("H.264 only — plays everywhere (max 1080p)", config.CodecH264),
-					huh.NewOption("Any codec — adds VP9/AV1 up to 4K", config.CodecAny),
-				).
-				Value(&s.cfg.VideoCodec),
-
 			huh.NewInput().
 				Key("fragments").
 				Title("Concurrent fragments").

@@ -43,7 +43,6 @@ offered.
 
 The trade-off is stated in the UI rather than hidden: YouTube only serves H.264 up to
 **1080p**. If you need 4K you need VP9/AV1, and this tool won't pretend otherwise.
-(`video_codec = "any"` in the config turns the filter off.)
 
 ## Features
 
@@ -119,7 +118,6 @@ utub --dir ~/Movies  # override the download directory for this run
 
 ```toml
 download_dir         = "/Users/you/Downloads"
-video_codec          = "h264"        # h264 | any
 concurrent_fragments = 16
 http_chunk_size      = "10M"
 downloader           = "auto"        # auto | builtin | aria2c

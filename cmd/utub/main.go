@@ -165,11 +165,7 @@ func reportConfig() {
 		fmt.Printf("download  %s\n", dir)
 	}
 
-	fmt.Printf("codec     %s", cfg.VideoCodec)
-	if cfg.VideoCodec == config.CodecH264 {
-		fmt.Print("  (H.264 only — max 1080p, plays everywhere)")
-	}
-	fmt.Println()
+	fmt.Println("codec     H.264 only — max 1080p, plays everywhere")
 	fmt.Println()
 }
 

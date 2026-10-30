@@ -24,9 +24,6 @@ func TestDefaultIsValid(t *testing.T) {
 	if !filepath.IsAbs(cfg.DownloadDir) {
 		t.Errorf("Default().DownloadDir = %q, want an absolute path", cfg.DownloadDir)
 	}
-	if cfg.VideoCodec != CodecH264 {
-		t.Errorf("Default().VideoCodec = %q, want %q", cfg.VideoCodec, CodecH264)
-	}
 	if cfg.ConcurrentFragments != DefaultConcurrentFragments {
 		t.Errorf("Default().ConcurrentFragments = %d, want %d", cfg.ConcurrentFragments, DefaultConcurrentFragments)
 	}
@@ -51,7 +48,6 @@ func TestSaveToRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "config.toml")
 
 	want := devConfig(t)
-	want.VideoCodec = CodecAny
 	want.ConcurrentFragments = 8
 	want.HTTPChunkSize = "4M"
 	want.Downloader = DownloaderAria2c
@@ -112,7 +108,7 @@ func TestSaveToFilePermissions(t *testing.T) {
 
 func TestLoadFromPartialFileMergesDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte(`video_codec = "any"`+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`concurrent_fragments = 8`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -122,15 +118,15 @@ func TestLoadFromPartialFileMergesDefaults(t *testing.T) {
 	}
 
 	want := Default()
-	want.VideoCodec = CodecAny
+	want.ConcurrentFragments = 8
 	if got != want {
-		t.Errorf("partial file = %+v, want defaults with codec override %+v", got, want)
+		t.Errorf("partial file = %+v, want defaults with fragments override %+v", got, want)
 	}
 }
 
 func TestLoadFromMalformedTOML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("video_codec = \n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("concurrent_fragments = \n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -143,16 +139,16 @@ func TestLoadFromMalformedTOML(t *testing.T) {
 
 func TestLoadFromInvalidValueFailsValidation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte(`video_codec = "vp9"`+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`downloader = "curl"`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	_, err := LoadFrom(path)
 	if err == nil {
-		t.Fatal("LoadFrom accepted video_codec = \"vp9\"")
+		t.Fatal("LoadFrom accepted downloader = \"curl\"")
 	}
-	if !strings.Contains(err.Error(), "video_codec") {
-		t.Errorf("error = %q, want it to name video_codec", err)
+	if !strings.Contains(err.Error(), "downloader") {
+		t.Errorf("error = %q, want it to name downloader", err)
 	}
 }
 
@@ -162,10 +158,7 @@ func TestValidate(t *testing.T) {
 		mutate  func(*Config)
 		wantErr string // substring; "" means valid
 	}{
-		{"valid h264", func(*Config) {}, ""},
-		{"valid any", func(c *Config) { c.VideoCodec = CodecAny }, ""},
-		{"bad codec", func(c *Config) { c.VideoCodec = "vp9" }, "video_codec"},
-		{"empty codec", func(c *Config) { c.VideoCodec = "" }, "video_codec"},
+		{"valid defaults", func(*Config) {}, ""},
 		{"bad downloader", func(c *Config) { c.Downloader = "curl" }, "downloader"},
 		{"bad audio format", func(c *Config) { c.DefaultAudioFormat = "flac" }, "default_audio_format"},
 		{"fragments zero", func(c *Config) { c.ConcurrentFragments = 0 }, "concurrent_fragments"},
@@ -205,7 +198,7 @@ func TestValidate(t *testing.T) {
 func TestSaveToRejectsInvalidConfig(t *testing.T) {
 	cfg := Default()
 	cfg.DownloadDir = t.TempDir()
-	cfg.VideoCodec = "vp9"
+	cfg.Downloader = "curl"
 
 	path := filepath.Join(t.TempDir(), "config.toml")
 	if err := cfg.SaveTo(path); err == nil {

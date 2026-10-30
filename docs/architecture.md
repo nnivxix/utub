@@ -194,7 +194,7 @@ bv*[vcodec^=avc1][height=N]+ba[ext=m4a]
 The last alternative may yield a non-MP4 result; when it fires the engine sets
 `Event.Warn` and the UI shows a warning instead of silently producing an unplayable file.
 
-Reversible: `video_codec = "h264" | "any"` in config. One line in `select.go`.
+Reversible only by changing the code: H.264 is the single video policy in v1.
 
 ## 9. Configuration
 
@@ -202,7 +202,6 @@ Reversible: `video_codec = "h264" | "any"` in config. One line in `select.go`.
 
 ```toml
 download_dir         = "/Users/hanasa/Downloads"
-video_codec          = "h264"        # h264 | any
 concurrent_fragments = 16
 http_chunk_size      = "10M"
 downloader           = "auto"        # auto | builtin | aria2c

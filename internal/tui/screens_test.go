@@ -19,7 +19,7 @@ import (
 func TestFormatsHidesNonH264(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{ID: "dQw4w9WgXcQ"}, false)
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{ID: "dQw4w9WgXcQ"})
 	rows := m.rows()
 
 	if len(rows) == 0 {
@@ -41,7 +41,7 @@ func TestFormatsHidesNonH264(t *testing.T) {
 func TestFormatsPrefersVideoOnlyOverMuxed(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, false)
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
 	for _, row := range m.rows() {
 		if row.ID == "18" {
 			t.Fatal("muxed 360p (18) should lose its bucket to video-only 134")
@@ -49,19 +49,10 @@ func TestFormatsPrefersVideoOnlyOverMuxed(t *testing.T) {
 	}
 }
 
-func TestFormatsAllowAnyIncludesHighRes(t *testing.T) {
-	t.Parallel()
-
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, true)
-	if got := m.rows()[0].Height; got != 2160 {
-		t.Fatalf("top row height = %d, want 2160 when any codec is allowed", got)
-	}
-}
-
 func TestFormatsCursorClamps(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, false)
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	if m.cursor != 0 {
@@ -79,7 +70,7 @@ func TestFormatsCursorClamps(t *testing.T) {
 func TestFormatsTabSwitchesAndResetsCursor(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, false)
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
 	m.cursor = 3
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -97,7 +88,7 @@ func TestFormatsTabSwitchesAndResetsCursor(t *testing.T) {
 func TestFormatsEnterSelectsAndNavigates(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{ID: "dQw4w9WgXcQ"}, false)
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{ID: "dQw4w9WgXcQ"})
 
 	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
@@ -122,7 +113,7 @@ func TestFormatsEnterSelectsAndNavigates(t *testing.T) {
 func TestFormatsAudioEnterCarriesAudioFormat(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, false)
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 
 	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -135,7 +126,7 @@ func TestFormatsAudioEnterCarriesAudioFormat(t *testing.T) {
 func TestFormatsViewStatesTheH264Limit(t *testing.T) {
 	t.Parallel()
 
-	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{}, false)
+	m := newFormats(defaultKeyMap(), demoMedia(), media.Ref{})
 	view := m.View()
 
 	if !strings.Contains(view, "H.264 · max 1080p") {
@@ -150,7 +141,7 @@ func TestFormatsViewStatesTheH264Limit(t *testing.T) {
 
 func videoFormat(t *testing.T) media.Format {
 	t.Helper()
-	rows := demoMedia().VideoFormats(false)
+	rows := demoMedia().VideoFormats()
 	if len(rows) == 0 {
 		t.Fatal("demo media has no video format")
 	}
@@ -161,7 +152,7 @@ func TestProgressDemoReachesAudioThenDone(t *testing.T) {
 	t.Parallel()
 
 	info := demoMedia()
-	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats(false)[0], info, "/tmp")
+	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats()[0], info, "/tmp")
 
 	if m.stage != core.StageVideo {
 		t.Fatalf("stage = %s, want video", m.stage)
@@ -213,7 +204,7 @@ func TestProgressCancelIsSticky(t *testing.T) {
 	t.Parallel()
 
 	info := demoMedia()
-	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats(false)[0], info, "/tmp")
+	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats()[0], info, "/tmp")
 
 	m = m.cancel()
 	if m.state != core.StateCanceled {
@@ -233,7 +224,7 @@ func TestProgressAppliesEngineEvents(t *testing.T) {
 	t.Parallel()
 
 	info := demoMedia()
-	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats(false)[0], info, "/tmp")
+	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats()[0], info, "/tmp")
 
 	m = m.apply(core.Event{Stage: core.StageVideo, Percent: 0.5, Bytes: 1024, Total: 2048, Speed: 512})
 	if m.percent != 0.5 || m.bytes != 1024 || m.total != 2048 {
@@ -250,7 +241,7 @@ func TestProgressFailedEventStopsControls(t *testing.T) {
 	t.Parallel()
 
 	info := demoMedia()
-	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats(false)[0], info, "/tmp")
+	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats()[0], info, "/tmp")
 
 	boom := errors.New("ffmpeg not found")
 	m = m.apply(core.Event{Stage: core.StageMerge, Err: boom})

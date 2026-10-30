@@ -150,7 +150,7 @@ func TestVideoCandidatesH264Only(t *testing.T) {
 
 	// 1080p60, 1080p30 and 720p30 -> three buckets: the muxed 720p row loses
 	// to the video-only 136 in its own bucket, so it never becomes its own row.
-	got := VideoCandidates(formats, false)
+	got := VideoCandidates(formats)
 	if len(got) != 3 {
 		t.Fatalf("VideoCandidates returned %d rows, want 3: %v", len(got), ids(got))
 	}
@@ -170,21 +170,6 @@ func TestVideoCandidatesH264Only(t *testing.T) {
 	}
 }
 
-func TestVideoCandidatesAllowAny(t *testing.T) {
-	formats := []Format{
-		videoOnly("337", 2160, 60, "av01", 20000),
-		videoOnly("299", 1080, 60, "avc1", 6000),
-	}
-
-	got := VideoCandidates(formats, true)
-	if len(got) != 2 {
-		t.Fatalf("VideoCandidates(allowAny) returned %d rows, want 2", len(got))
-	}
-	if got[0].Height != 2160 {
-		t.Errorf("first row height = %d, want 2160", got[0].Height)
-	}
-}
-
 func TestVideoCandidatesSortsByHeightThenFPS(t *testing.T) {
 	formats := []Format{
 		videoOnly("a", 720, 30, "avc1", 1000),
@@ -193,7 +178,7 @@ func TestVideoCandidatesSortsByHeightThenFPS(t *testing.T) {
 		videoOnly("d", 360, 30, "avc1", 500),
 	}
 
-	got := VideoCandidates(formats, false)
+	got := VideoCandidates(formats)
 	wantOrder := []string{"c", "b", "a", "d"}
 	for i, want := range wantOrder {
 		if got[i].ID != want {
@@ -203,10 +188,10 @@ func TestVideoCandidatesSortsByHeightThenFPS(t *testing.T) {
 }
 
 func TestVideoCandidatesEmpty(t *testing.T) {
-	if got := VideoCandidates(nil, false); len(got) != 0 {
+	if got := VideoCandidates(nil); len(got) != 0 {
 		t.Errorf("VideoCandidates(nil) = %v, want empty", got)
 	}
-	if got := VideoCandidates([]Format{audioOnly("140", "m4a", "mp4a", 128)}, false); len(got) != 0 {
+	if got := VideoCandidates([]Format{audioOnly("140", "m4a", "mp4a", 128)}); len(got) != 0 {
 		t.Errorf("VideoCandidates(audio only) = %v, want empty", got)
 	}
 }
@@ -255,10 +240,9 @@ func TestAudioCandidatesDedupesWithinContainerOnly(t *testing.T) {
 func TestRecommend(t *testing.T) {
 	t.Run("prefers highest at or below 1080p", func(t *testing.T) {
 		video := VideoCandidates([]Format{
-			videoOnly("2160", 2160, 60, "av01", 20000),
 			videoOnly("1080", 1080, 60, "avc1", 6000),
 			videoOnly("720", 720, 30, "avc1", 2000),
-		}, true)
+		})
 
 		got, ok := Recommend(video)
 		if !ok {
@@ -270,9 +254,11 @@ func TestRecommend(t *testing.T) {
 	})
 
 	t.Run("falls back to highest when everything is above 1080p", func(t *testing.T) {
+		// VideoCandidates never filters on height, so a hypothetical 2160p
+		// avc1 stream still exercises Recommend's fallback branch.
 		video := VideoCandidates([]Format{
-			videoOnly("2160", 2160, 60, "av01", 20000),
-		}, true)
+			videoOnly("2160", 2160, 60, "avc1", 20000),
+		})
 
 		got, ok := Recommend(video)
 		if !ok || got.Height != 2160 {
@@ -299,17 +285,14 @@ func TestMediaInfoHelpers(t *testing.T) {
 		},
 	}
 
-	if got := info.VideoFormats(false); len(got) != 1 || got[0].Height != 1080 {
-		t.Errorf("VideoFormats(false) = %v, want only the 1080p H.264 row", ids(got))
-	}
-	if got := info.VideoFormats(true); len(got) != 2 {
-		t.Errorf("VideoFormats(true) returned %d rows, want 2", len(got))
+	if got := info.VideoFormats(); len(got) != 1 || got[0].Height != 1080 {
+		t.Errorf("VideoFormats() = %v, want only the 1080p H.264 row", ids(got))
 	}
 	if got := info.AudioFormats(); len(got) != 1 || got[0].ID != "140" {
 		t.Errorf("AudioFormats() = %v, want the m4a row", ids(got))
 	}
-	if got, ok := info.Recommended(false); !ok || got.ID != "299" {
-		t.Errorf("Recommended(false) = (%s, %v), want 299", got.ID, ok)
+	if got, ok := info.Recommended(); !ok || got.ID != "299" {
+		t.Errorf("Recommended() = (%s, %v), want 299", got.ID, ok)
 	}
 }
 

@@ -164,11 +164,11 @@ type MediaInfo struct {
 // VideoFormats returns the selectable video rows: highest-quality stream per
 // resolution (and frame rate), sorted best first.
 //
-// H.264-only is the default policy: VP9/AV1 rows are dropped because they do
-// not play in QuickTime, iOS or most editors. Note that YouTube only serves
-// H.264 up to 1080p, so allowAny is the only way to offer 1440p and above.
-func (m MediaInfo) VideoFormats(allowAny bool) []Format {
-	return VideoCandidates(m.Formats, allowAny)
+// Only H.264 is offered because VP9/AV1 do not play in QuickTime, iOS or most
+// editors. Note that YouTube only serves H.264 up to 1080p, so 1440p and above
+// are deliberately absent.
+func (m MediaInfo) VideoFormats() []Format {
+	return VideoCandidates(m.Formats)
 }
 
 // AudioFormats returns the selectable audio rows, best first.
@@ -178,22 +178,22 @@ func (m MediaInfo) AudioFormats() []Format {
 
 // Recommended returns the row the picker should pre-select: the highest
 // resolution at or below 1080p, else the highest available.
-func (m MediaInfo) Recommended(allowAny bool) (Format, bool) {
-	return Recommend(m.VideoFormats(allowAny))
+func (m MediaInfo) Recommended() (Format, bool) {
+	return Recommend(m.VideoFormats())
 }
 
-// maxH264Height is the highest resolution YouTube serves as H.264.
-const maxH264Height = 1080
+// MaxH264Height is the highest resolution YouTube serves as H.264.
+const MaxH264Height = 1080
 
 // VideoCandidates filters, deduplicates and sorts video formats.
-func VideoCandidates(formats []Format, allowAny bool) []Format {
+func VideoCandidates(formats []Format) []Format {
 	best := make(map[string]Format)
 
 	for _, f := range formats {
 		if !f.hasVideo() || f.Height <= 0 {
 			continue
 		}
-		if !allowAny && !f.IsH264() {
+		if !f.IsH264() {
 			continue
 		}
 
@@ -221,15 +221,12 @@ func VideoCandidates(formats []Format, allowAny bool) []Format {
 }
 
 // betterVideo decides which stream wins for one resolution bucket: a
-// video-only H.264 stream beats a muxed one, then higher bitrate wins.
+// video-only stream beats a muxed one, then higher bitrate wins.
 func betterVideo(candidate, current Format) bool {
 	candVO := candidate.Kind() == KindVideoOnly
 	curVO := current.Kind() == KindVideoOnly
 	if candVO != curVO {
 		return candVO
-	}
-	if candidate.IsH264() != current.IsH264() {
-		return candidate.IsH264()
 	}
 	return candidate.TBR > current.TBR
 }
@@ -289,7 +286,7 @@ func Recommend(video []Format) (Format, bool) {
 		return Format{}, false
 	}
 	for _, f := range video {
-		if f.Height <= maxH264Height {
+		if f.Height <= MaxH264Height {
 			return f, true
 		}
 	}

@@ -32,21 +32,17 @@ type formatsModel struct {
 	ref  media.Ref
 	info media.MediaInfo
 
-	// allowAny mirrors config.VideoCodec == "any". The default is H.264 only.
-	allowAny bool
-
 	tab    formatTab
 	cursor int
 	width  int
 	height int
 }
 
-func newFormats(keys keyMap, info media.MediaInfo, ref media.Ref, allowAny bool) formatsModel {
+func newFormats(keys keyMap, info media.MediaInfo, ref media.Ref) formatsModel {
 	return formatsModel{
-		keys:     keys,
-		ref:      ref,
-		info:     info,
-		allowAny: allowAny,
+		keys: keys,
+		ref:  ref,
+		info: info,
 	}
 }
 
@@ -55,7 +51,7 @@ func (m formatsModel) rows() []media.Format {
 	if m.tab == tabAudio {
 		return m.info.AudioFormats()
 	}
-	return m.info.VideoFormats(m.allowAny)
+	return m.info.VideoFormats()
 }
 
 func (m formatsModel) selected() (media.Format, bool) {
@@ -197,9 +193,6 @@ func (m formatsModel) row(format media.Format, index int, best media.Format) str
 }
 
 func (m formatsModel) footnote() string {
-	if m.allowAny {
-		return "all codecs · VP9/AV1 may not preview in QuickTime or import into editors"
-	}
 	return "H.264 · max 1080p (higher resolutions are VP9/AV1 only)"
 }
 

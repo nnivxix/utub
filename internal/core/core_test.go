@@ -225,7 +225,7 @@ func TestNoopManagerProbeReturnsZeroMediaInfo(t *testing.T) {
 	if info.Title != "" || info.Source != 0 || len(info.Formats) != 0 {
 		t.Fatalf("Probe() = %+v, want zero media.MediaInfo", info)
 	}
-	if got := info.VideoFormats(false); len(got) != 0 {
+	if got := info.VideoFormats(); len(got) != 0 {
 		t.Fatalf("VideoFormats() on zero MediaInfo = %d rows, want 0", len(got))
 	}
 }

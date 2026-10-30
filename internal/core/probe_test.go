@@ -71,25 +71,17 @@ func TestProbeMapsVideoFixture(t *testing.T) {
 
 	// The fixture is a real 4K upload, so this also proves the H.264 policy is
 	// filtering rather than the source happening to be small.
-	h264 := info.VideoFormats(false)
+	h264 := info.VideoFormats()
 	if len(h264) == 0 {
-		t.Fatal("VideoFormats(false) is empty for a real video")
+		t.Fatal("VideoFormats() is empty for a real video")
 	}
 	for _, format := range h264 {
 		if !format.IsH264() {
 			t.Errorf("format %s (%s) leaked into the H.264 list", format.ID, format.VCodec)
 		}
-		if format.Height > 1080 {
+		if format.Height > media.MaxH264Height {
 			t.Errorf("format %s is %dp, want the 1080p ceiling", format.ID, format.Height)
 		}
-	}
-
-	any := info.VideoFormats(true)
-	if len(any) <= len(h264) {
-		t.Fatalf("allowAny returned %d rows, H.264-only %d: the 4K formats should appear", len(any), len(h264))
-	}
-	if any[0].Height <= 1080 {
-		t.Fatalf("allowAny top row is %dp, want above 1080p from this 4K fixture", any[0].Height)
 	}
 }
 
@@ -258,9 +250,9 @@ func TestProbeLive(t *testing.T) {
 	}
 
 	t.Logf("%s · %s · %d formats · %d H.264 rows",
-		info.ID, info.Duration, len(info.Formats), len(info.VideoFormats(false)))
+		info.ID, info.Duration, len(info.Formats), len(info.VideoFormats()))
 
-	if info.Title == "" || len(info.VideoFormats(false)) == 0 {
+	if info.Title == "" || len(info.VideoFormats()) == 0 {
 		t.Fatalf("live probe returned nothing usable: %+v", info)
 	}
 }

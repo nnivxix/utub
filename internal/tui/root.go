@@ -140,7 +140,7 @@ func (r root) navigate(msg navigateMsg) (tea.Model, tea.Cmd) {
 	case screenFormats:
 		r.ref = ref
 		info := demoMedia() // TODO(M1): r.deps.Manager.Probe(ref.URL)
-		r.formats = newFormats(r.keys, info, ref, r.deps.Config.VideoCodec == config.CodecAny)
+		r.formats = newFormats(r.keys, info, ref)
 		r.formats, _ = r.formats.Update(tea.WindowSizeMsg{Width: r.width, Height: r.height})
 		r.screen = screenFormats
 		return r, nil

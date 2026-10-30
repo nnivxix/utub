@@ -17,5 +17,5 @@ package core
 // say the file may not be H.264/MP4 instead of silently producing something
 // QuickTime cannot preview.
 //
-// The codec policy is read from Request.Config.VideoCodec, never hard-coded:
-// "any" drops the avc1 filters.
+// The codec policy is fixed: H.264 (avc1) only. There is no configuration knob
+// in v1 — every chain alternative carries the avc1 filter.

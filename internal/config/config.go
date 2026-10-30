@@ -21,12 +21,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Video codec policy.
-const (
-	CodecH264 = "h264" // H.264/avc1 only — plays and imports everywhere (max 1080p)
-	CodecAny  = "any"  // offer every codec, including VP9/AV1
-)
-
 // Downloader backends.
 const (
 	DownloaderAuto    = "auto"    // use aria2c when it is on PATH, else yt-dlp builtin
@@ -58,7 +52,6 @@ var chunkSizeRE = regexp.MustCompile(`^[0-9]+[KMG]?$`)
 // Config mirrors config.toml one-to-one.
 type Config struct {
 	DownloadDir         string `toml:"download_dir"`
-	VideoCodec          string `toml:"video_codec"`
 	ConcurrentFragments int    `toml:"concurrent_fragments"`
 	HTTPChunkSize       string `toml:"http_chunk_size"`
 	Downloader          string `toml:"downloader"`
@@ -70,7 +63,6 @@ type Config struct {
 func Default() Config {
 	return Config{
 		DownloadDir:         DefaultDownloadDir(),
-		VideoCodec:          CodecH264,
 		ConcurrentFragments: DefaultConcurrentFragments,
 		HTTPChunkSize:       "10M",
 		Downloader:          DownloaderAuto,
@@ -168,12 +160,6 @@ func (c Config) SaveTo(path string) error {
 
 // Validate checks every value without touching the filesystem.
 func (c Config) Validate() error {
-	switch c.VideoCodec {
-	case CodecH264, CodecAny:
-	default:
-		return fmt.Errorf("config: video_codec must be %q or %q, got %q", CodecH264, CodecAny, c.VideoCodec)
-	}
-
 	switch c.Downloader {
 	case DownloaderAuto, DownloaderBuiltin, DownloaderAria2c:
 	default:
