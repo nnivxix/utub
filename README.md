@@ -17,9 +17,14 @@ Paste a YouTube or YouTube Music link
 enter select · ctrl+v paste link · ctrl+u clear · ctrl+s settings · esc back
 ```
 
-> **Status:** the TUI is built end-to-end — home, format picker, progress, settings — but it
-> runs on demo data. The engine (probe, download, cancel) is milestone **M1**; the web and
-> desktop surfaces are specified but not started. See [Roadmap](#roadmap).
+> **⚠️ In development — not usable yet.**
+>
+> The interface is built (home, format picker, progress, settings) and navigation works, but it
+> runs on **demo data: nothing is downloaded**. The engine — probe, download, cancel — is the
+> next milestone. There is no release and no stable behaviour; expect breaking changes.
+>
+> Progress and the full task list live in [PLAN.md](PLAN.md); the design contract is
+> [docs/architecture.md](docs/architecture.md). See also [Roadmap](#roadmap).
 
 ---
 
@@ -150,6 +155,7 @@ internal/config   TOML config
 web/              Vue 3 SPA (shared by web and desktop)
 desktop/          Wails v3 shell (separate go.mod)
 docs/             architecture notes
+PLAN.md           status, remaining milestones, resume instructions
 ```
 
 The rule that keeps three frontends honest: `internal/core` imports no UI package, and every
