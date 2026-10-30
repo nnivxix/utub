@@ -31,6 +31,7 @@ const doctorTimeout = 30 * time.Second
 func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	doctor := flag.Bool("doctor", false, "check config and external binaries")
+	demo := flag.Bool("demo", false, "run the TUI on canned data, without probing or downloading")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -47,13 +48,13 @@ func main() {
 		os.Exit(2)
 
 	default:
-		os.Exit(runTUI())
+		os.Exit(runTUI(*demo))
 	}
 }
 
 // runTUI loads settings, resolves the download directory and hands the terminal
 // to the TUI. Returns a process exit code.
-func runTUI() int {
+func runTUI(demo bool) int {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "utub: %v\n", err)
@@ -67,16 +68,26 @@ func runTUI() int {
 	}
 
 	deps := tui.Deps{
-		Manager: newEngine(),
+		Manager: engineFor(demo),
 		Config:  cfg,
 		DestDir: dir,
 		Version: version,
+		Demo:    demo,
 	}
 	if err := tui.Run(deps); err != nil {
 		fmt.Fprintf(os.Stderr, "utub: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// engineFor builds the engine the TUI talks to. --demo never probes or
+// downloads, so it skips the binary scan and opens instantly.
+func engineFor(demo bool) core.Manager {
+	if demo {
+		return &core.Engine{}
+	}
+	return newEngine()
 }
 
 // newEngine resolves the sidecar binaries once, so probing and downloading use
@@ -105,6 +116,7 @@ func usage() {
 
 usage:
   utub            start the interactive TUI
+  utub --demo     run the TUI on canned data (no network, no downloads)
   utub --doctor   check config and external binaries
   utub --version  print the version
 

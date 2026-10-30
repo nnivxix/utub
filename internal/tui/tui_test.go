@@ -317,7 +317,9 @@ func TestHeaderShowsShortenedDownloadDir(t *testing.T) {
 func TestViewRendersProgressScreen(t *testing.T) {
 	t.Parallel()
 
-	r := newRoot(testDeps())
+	deps := testDeps()
+	deps.Demo = true
+	r := newRoot(deps)
 	model, _ := r.Update(navigateMsg{screen: screenProgress, format: demoMedia().VideoFormats()[0]})
 	r = model.(root)
 

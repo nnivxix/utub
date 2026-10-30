@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/nnivxix/utub/internal/config"
+	"github.com/nnivxix/utub/internal/core"
 	"github.com/nnivxix/utub/internal/media"
 )
 
@@ -48,3 +49,28 @@ type probeErrMsg struct {
 	ref media.Ref
 	err error
 }
+
+// jobStartedMsg is the answer to Manager.Start: either a live job plus its
+// event stream, or the validation error Start refused with.
+type jobStartedMsg struct {
+	job    *core.Job
+	events <-chan core.Event
+	err    error
+}
+
+// jobEventMsg is one sample from a job's stream. jobID lets the progress screen
+// ignore a late event from a job it no longer owns.
+type jobEventMsg struct {
+	jobID string
+	event core.Event
+}
+
+// jobClosedMsg means the job's stream is closed. For a cancelled job that is
+// the only signal it has ended, so the handler reads Job.State().
+type jobClosedMsg struct {
+	jobID string
+}
+
+// quitMsg ends the program after every running job has been stopped. Quitting
+// through Tea directly would leave yt-dlp and ffmpeg running as orphans.
+type quitMsg struct{}

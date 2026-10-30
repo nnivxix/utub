@@ -130,8 +130,6 @@ func (m formatsModel) View() string {
 
 	b.WriteString("\n")
 	b.WriteString(styleMuted.Render(m.footnote()))
-	b.WriteString("\n")
-	b.WriteString(styleMuted.Render("demo data — real probing lands in M1"))
 
 	return b.String()
 }

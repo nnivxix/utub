@@ -1,10 +1,10 @@
 # Architecture
 
-Status: **design doc / spec**, kept true as milestones land. Steps 0-9 are complete; M1 is
-nearly done — probe, format selection, the download executor, the progress parser, error
-classification and the job manager all exist and are tested. Only M1.8 (wire the real event
-stream into the TUI) and the live acceptance run remain. Later work is checked against this
-document; if a step contradicts it, the step stops and this file is amended deliberately.
+Status: **design doc / spec**, kept true as milestones land. Steps 0-9, M1 and M3 are
+complete: the engine probes, downloads, streams coalesced progress and cancels by process
+group, and the TUI is a working single-link downloader (`--demo` for offline layout work).
+Next is M4 (`internal/api` + `cmd/utubd`). Later work is checked against this document; if a
+step contradicts it, the step stops and this file is amended deliberately.
 
 Module: `github.com/nnivxix/utub` · Go 1.27 · macOS/Linux/Windows
 
@@ -243,6 +243,9 @@ Download directory resolution order: `download_dir` → OS default (`~/Downloads
 Writes are atomic (temp file + rename). The directory is validated at save time **and** again
 at download time, so a deleted folder fails loudly rather than halfway through a job.
 
+The TUI settings screen edits `download_dir`, `concurrent_fragments`, `downloader`,
+`default_audio_format` and `cookies_from_browser`; the rest of the file is hand-edited.
+
 ## 10. Security model (web only)
 
 Single user, no accounts, no sessions.
@@ -273,8 +276,8 @@ same-origin.
 | 7 | TUI foundation | done |
 | 8 | TUI screens | done |
 | 9 | wrap: fmt, vet, test, commit | done |
-| M1 | `core` probe/select/download/progress/errors/manager — real behaviour | done except TUI wiring (M1.8) and the live acceptance run |
-| M3 | TUI complete: real data, probing state, cancel kills the process group | probing + real formats done; downloads pending M1.8 |
+| M1 | `core` probe/select/download/progress/errors/manager — real behaviour | done; acceptance run executed live |
+| M3 | TUI complete: real data, probing state, cancel kills the process group | done |
 | M4 | `internal/api` + `utubd` | not started |
 | M5 | Vue SPA | not started |
 | M6 | Wails desktop | not started |

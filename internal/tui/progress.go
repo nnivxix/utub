@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -9,27 +10,42 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/nnivxix/utub/internal/config"
 	"github.com/nnivxix/utub/internal/core"
 	"github.com/nnivxix/utub/internal/media"
+	"github.com/nnivxix/utub/internal/platform"
 )
 
-// demoTickMsg drives the progress screen until M1 wires real core.Events.
+// demoTickMsg drives the progress screen in --demo mode, where nothing is
+// downloaded. Real jobs are fed by the engine's event channel instead.
 type demoTickMsg struct {
 	n int
 }
 
 const demoTickInterval = 120 * time.Millisecond
 
-// progressModel shows one download. It renders whatever core.Event says; the
-// demo ticker below feeds the same fields a real event would, so M1 only has to
-// replace the producer.
+// progressModel shows one download.
+//
+// It renders whatever core.Event says and never computes progress itself: with
+// a manager, start() hands the request to the engine and the update loop folds
+// the resulting events in. --demo keeps the local ticker so layout work does
+// not need the network.
 type progressModel struct {
 	keys keyMap
+
+	manager core.Manager       // nil or demo → offline ticker
+	cfg     config.Config      // snapshot for this job
+	demo    bool               // --demo
+	reveal  func(string) error // nil → platform.Reveal
 
 	ref     media.Ref
 	format  media.Format
 	info    media.MediaInfo
 	destDir string
+
+	job      *core.Job
+	events   <-chan core.Event
+	stopping bool // cancel requested, waiting for the stream to close
 
 	state   core.State
 	stage   core.Stage
@@ -48,10 +64,6 @@ type progressModel struct {
 }
 
 func newProgress(keys keyMap, ref media.Ref, format media.Format, info media.MediaInfo, destDir string) progressModel {
-	stage := core.StageVideo
-	if format.Kind() == media.KindAudioOnly {
-		stage = core.StageAudio
-	}
 	return progressModel{
 		keys:    keys,
 		ref:     ref,
@@ -59,13 +71,62 @@ func newProgress(keys keyMap, ref media.Ref, format media.Format, info media.Med
 		info:    info,
 		destDir: destDir,
 		state:   core.StateRunning,
-		stage:   stage,
+		stage:   stageForFormat(format),
 		percent: 0,
 	}
 }
 
-// start kicks off the demo ticker. M1 replaces this with manager.Start(...).
-func (m progressModel) start() (progressModel, tea.Cmd) { return m, demoTick(0) }
+// stageForFormat is the stage a fresh job starts in: an audio-only request has
+// no video stream to download.
+func stageForFormat(format media.Format) core.Stage {
+	if format.Kind() == media.KindAudioOnly {
+		return core.StageAudio
+	}
+	return core.StageVideo
+}
+
+// start hands the request to the engine. The manager validates synchronously,
+// so a rejected request comes back as a failed job rather than a dead channel.
+func (m progressModel) start() (progressModel, tea.Cmd) {
+	if m.demo || m.manager == nil {
+		m.state = core.StateRunning
+		return m, demoTick(0)
+	}
+
+	manager := m.manager
+	req := core.Request{
+		URL:    m.ref.URL,
+		Format: m.format,
+		OutDir: m.destDir,
+		Config: m.cfg,
+		Source: m.info,
+	}
+
+	m.state = core.StatePending
+	return m, func() tea.Msg {
+		job, events, err := manager.Start(req)
+		if err != nil {
+			return jobStartedMsg{err: err}
+		}
+		return jobStartedMsg{job: job, events: events}
+	}
+}
+
+// waitForEvent blocks in a tea.Cmd goroutine until the engine produces a sample
+// or closes the stream, keeping the update loop responsive while yt-dlp is
+// quiet (a merge can take minutes).
+func waitForEvent(jobID string, events <-chan core.Event) tea.Cmd {
+	if events == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		event, ok := <-events
+		if !ok {
+			return jobClosedMsg{jobID: jobID}
+		}
+		return jobEventMsg{jobID: jobID, event: event}
+	}
+}
 
 func demoTick(n int) tea.Cmd {
 	return tea.Tick(demoTickInterval, func(time.Time) tea.Msg { return demoTickMsg{n: n} })
@@ -78,19 +139,166 @@ func (m progressModel) Update(msg tea.Msg) (progressModel, tea.Cmd) {
 		return m, nil
 
 	case demoTickMsg:
+		if !m.demo {
+			return m, nil
+		}
 		return m.advance()
 
-	case core.Event:
-		return m.apply(msg), nil
+	case jobStartedMsg:
+		return m.started(msg)
+
+	case jobEventMsg:
+		if m.job == nil || msg.jobID != m.job.ID {
+			return m, nil
+		}
+		m = m.apply(msg.event)
+		if msg.event.Terminal() {
+			// The engine records the final state before it publishes the
+			// terminal event, so the output path is readable right now.
+			m = m.finish()
+		}
+		return m, waitForEvent(msg.jobID, m.events)
+
+	case jobClosedMsg:
+		if m.job == nil || msg.jobID != m.job.ID {
+			return m, nil
+		}
+		m.events = nil
+		return m.finish(), nil
 
 	case tea.KeyPressMsg:
-		// The router owns esc (cancel) and ctrl+c (quit). Enter only does
-		// something once the job has stopped.
-		if key.Matches(msg, m.keys.Submit) && m.state.IsTerminal() {
+		if !m.state.IsTerminal() {
+			return m, nil
+		}
+		switch {
+		case key.Matches(msg, m.keys.Submit):
 			return m, func() tea.Msg { return navigateMsg{screen: screenHome} }
+		case key.Matches(msg, m.keys.Retry):
+			return m.retry()
+		case key.Matches(msg, m.keys.Reveal):
+			return m, m.revealOutput()
 		}
 	}
 	return m, nil
+}
+
+// started adopts the engine's job and begins draining its stream. A cancel
+// pressed while Start was still in flight is honoured here.
+func (m progressModel) started(msg jobStartedMsg) (progressModel, tea.Cmd) {
+	if msg.err != nil {
+		m.state = core.StateFailed
+		m.stopping = false
+		m.errText = humanDownloadError(msg.err)
+		return m, nil
+	}
+
+	m.job, m.events = msg.job, msg.events
+	m.state = core.StateRunning
+	m.errText = ""
+
+	if m.stopping {
+		// Cancelling is idempotent; ErrFinished just means the job beat us.
+		if err := m.manager.Cancel(msg.job.ID); err != nil && !errors.Is(err, core.ErrFinished) {
+			m.stopping = false
+			m.errText = humanDownloadError(err)
+		}
+	}
+
+	return m, waitForEvent(msg.job.ID, m.events)
+}
+
+// finish reconciles the model with the job's final state after the stream
+// closes. A cancelled job has no terminal event, so this is where the screen
+// learns it was stopped rather than finished.
+func (m progressModel) finish() progressModel {
+	if m.job == nil {
+		return m
+	}
+
+	switch m.job.State() {
+	case core.StateDone:
+		m.state = core.StateDone
+		m.stage = core.StageDone
+		m.percent = 1
+		m.output = m.job.OutputPath()
+	case core.StateCanceled:
+		m.state = core.StateCanceled
+	case core.StateFailed:
+		m.state = core.StateFailed
+		if err := m.job.Err(); err != nil {
+			m.errText = humanDownloadError(err)
+		}
+	default:
+		// The stream closed while the engine still calls the job pending or
+		// running. That should not happen; treat it as a cancellation rather
+		// than leaving the screen spinning forever.
+		if !m.state.IsTerminal() {
+			m.state = core.StateCanceled
+		}
+	}
+
+	m.stopping = false
+	return m
+}
+
+// requestCancel asks the engine to stop the job. The screen stays put and shows
+// "stopping" until the process group is gone and the stream closes.
+func (m progressModel) requestCancel() progressModel {
+	if m.state.IsTerminal() || m.stopping {
+		return m
+	}
+
+	if m.demo || m.manager == nil {
+		m.state = core.StateCanceled
+		return m
+	}
+
+	if m.job == nil {
+		// Start is still in flight; started() cancels as soon as it has an id.
+		m.stopping = true
+		return m
+	}
+
+	m.stopping = true
+	if err := m.manager.Cancel(m.job.ID); err != nil && !errors.Is(err, core.ErrFinished) {
+		m.stopping = false
+		m.errText = humanDownloadError(err)
+	}
+	return m
+}
+
+// retry starts a fresh job for the same request after a failure or a
+// cancellation. A finished job has nothing to retry.
+func (m progressModel) retry() (progressModel, tea.Cmd) {
+	if m.demo || (m.state != core.StateFailed && m.state != core.StateCanceled) {
+		return m, nil
+	}
+
+	m.job, m.events = nil, nil
+	m.stopping = false
+	m.state = core.StateRunning
+	m.stage = stageForFormat(m.format)
+	m.percent, m.bytes, m.total, m.speed, m.eta = 0, 0, 0, 0, 0
+	m.warn, m.errText, m.output = "", "", ""
+
+	return m.start()
+}
+
+// revealOutput opens the finished file in the OS file manager.
+func (m progressModel) revealOutput() tea.Cmd {
+	if m.state != core.StateDone || m.output == "" {
+		return nil
+	}
+
+	path := m.output
+	reveal := m.reveal
+	return func() tea.Msg {
+		if reveal == nil {
+			reveal = platform.Reveal
+		}
+		_ = reveal(path)
+		return nil
+	}
 }
 
 // advance moves the demo download forward one tick and stops at done.
@@ -155,8 +363,7 @@ func (m progressModel) nextStage() (core.Stage, bool) {
 	}
 }
 
-// apply folds a real engine event into the view. Unused until M1, but written
-// now so the wiring does not change shape later.
+// apply folds a real engine event into the view.
 func (m progressModel) apply(event core.Event) progressModel {
 	if event.Stage != core.StageDone {
 		m.stage = event.Stage
@@ -174,22 +381,12 @@ func (m progressModel) apply(event core.Event) progressModel {
 	switch {
 	case event.Err != nil:
 		m.state = core.StateFailed
-		m.errText = event.Err.Error()
+		m.errText = humanDownloadError(event.Err)
 	case event.Stage == core.StageDone:
 		m.state = core.StateDone
 		m.stage = core.StageDone
 		m.percent = 1
 	}
-	return m
-}
-
-// cancel stops the demo job. Partial files are kept on purpose so --continue
-// can resume once M1 runs real downloads.
-func (m progressModel) cancel() progressModel {
-	if m.state.IsTerminal() {
-		return m
-	}
-	m.state = core.StateCanceled
 	return m
 }
 
@@ -271,13 +468,19 @@ func (m progressModel) stageLine(stage core.Stage, active core.Stage) string {
 }
 
 func (m progressModel) statusLine() string {
-	switch m.state {
-	case core.StateDone:
+	switch {
+	case m.stopping:
+		return styleDanger.Render("✗ stopping — waiting for yt-dlp to exit")
+	case m.state == core.StateDone && m.output == "":
+		return styleGood.Render("✓ finished")
+	case m.state == core.StateDone:
 		return styleGood.Render("✓ saved to " + shortenHome(m.output))
-	case core.StateCanceled:
+	case m.state == core.StateCanceled:
 		return styleDanger.Render("✗ canceled — partial file kept for resume")
-	case core.StateFailed:
+	case m.state == core.StateFailed:
 		return styleDanger.Render("✗ failed")
+	case m.job == nil && !m.demo:
+		return styleMuted.Render("starting yt-dlp…")
 	default:
 		return styleMuted.Render("saving to " + shortenHome(m.destDir))
 	}
@@ -310,8 +513,8 @@ func shortETA(eta time.Duration) string {
 	return media.HumanDuration(eta)
 }
 
-// demoOutputName guesses the filename the demo would produce. M1 reports the
-// real path from yt-dlp instead of guessing.
+// demoOutputName guesses the filename the demo would produce. Real jobs report
+// the path from yt-dlp instead of guessing.
 func demoOutputName(info media.MediaInfo, format media.Format) string {
 	ext := format.Ext
 	if ext == "" {
@@ -319,4 +522,21 @@ func demoOutputName(info media.MediaInfo, format media.Format) string {
 	}
 	name := strings.NewReplacer("/", "-", ":", "-", "\\", "-").Replace(info.Title)
 	return fmt.Sprintf("%s [%s].%s", name, info.ID, ext)
+}
+
+// humanDownloadError turns a start or download failure into one readable line.
+// The raw engine text stays in the error chain for logs.
+func humanDownloadError(err error) string {
+	switch {
+	case errors.Is(err, core.ErrBadOutDir):
+		return "the download folder is missing or not a directory — fix it in settings (ctrl+s)"
+	case errors.Is(err, core.ErrMissingAria2c):
+		return "aria2c is not installed — set the downloader to auto or built-in in settings"
+	case errors.Is(err, core.ErrNoOutputPath):
+		return "yt-dlp finished but did not say where it saved the file"
+	}
+	if msg := humanEngineError(err); msg != "" {
+		return msg
+	}
+	return "download failed — " + firstLine(err.Error())
 }

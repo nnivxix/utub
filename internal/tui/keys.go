@@ -26,6 +26,12 @@ type keyMap struct {
 	Tab      key.Binding
 	ShiftTab key.Binding
 	Dir      key.Binding
+
+	// Download-screen actions. Cancel shares esc with Back; it exists so the
+	// footer can say "cancel" while a job runs and "back" once it has stopped.
+	Retry  key.Binding
+	Reveal key.Binding
+	Cancel key.Binding
 }
 
 func defaultKeyMap() keyMap {
@@ -43,6 +49,10 @@ func defaultKeyMap() keyMap {
 		Tab:      key.NewBinding(key.WithKeys("tab", "l"), key.WithHelp("tab", "video/audio")),
 		ShiftTab: key.NewBinding(key.WithKeys("shift+tab", "h"), key.WithHelp("shift+tab", "video/audio")),
 		Dir:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "directory")),
+
+		Retry:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "retry")),
+		Reveal: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "reveal")),
+		Cancel: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 	}
 }
 

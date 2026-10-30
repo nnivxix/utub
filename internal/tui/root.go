@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -48,6 +49,14 @@ type Deps struct {
 	Config  config.Config // snapshot at launch, refreshed after a settings save
 	DestDir string        // resolved, absolute download directory
 	Version string        // build stamp
+
+	// Demo keeps the TUI on canned media and the local progress ticker, so
+	// layout work needs neither the network nor yt-dlp. Set by --demo.
+	Demo bool
+
+	// Reveal opens a finished file in the OS file manager. Nil means
+	// platform.Reveal; tests inject a recorder.
+	Reveal func(string) error
 }
 
 // root is the router: it owns the window chrome (header, footer, sizing), the
@@ -69,6 +78,10 @@ type root struct {
 	// when the user cancels or submits a different link.
 	probeCancel context.CancelFunc
 	probeSeq    int
+
+	// shuttingDown means a quit is waiting for the running jobs to die; a
+	// second ctrl+c must not start a second shutdown.
+	shuttingDown bool
 
 	width  int
 	height int
@@ -121,6 +134,17 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.home, _ = r.home.Update(noticeMsg{text: "settings saved — downloading to " + shortenHome(msg.dir)})
 		return r, nil
 
+	case jobStartedMsg, jobEventMsg, jobClosedMsg:
+		// Job messages are handled even when the user has navigated away: a job
+		// stopped in the background still has to reach its final state, and its
+		// stream must keep draining.
+		var cmd tea.Cmd
+		r.progress, cmd = r.progress.Update(msg)
+		return r, cmd
+
+	case quitMsg:
+		return r, tea.Quit
+
 	case tea.BackgroundColorMsg:
 		applyTheme(msg.IsDark())
 		return r, nil
@@ -129,7 +153,10 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, r.keys.Quit):
 			r.stopProbe()
-			return r, tea.Quit
+			// Compute the command before returning: shutdown mutates r, and
+			// return values are evaluated before the call.
+			cmd := r.shutdown()
+			return r, cmd
 		case key.Matches(msg, r.keys.Back):
 			return r.back()
 		}
@@ -180,11 +207,12 @@ func (r root) navigate(msg navigateMsg) (tea.Model, tea.Cmd) {
 
 	case screenProgress:
 		r.ref = ref
-		info := r.formats.info
-		if info.Title == "" {
-			info = demoMedia()
+		// One download at a time in v1: a job the user walked away from is
+		// stopped before a new one is registered.
+		if r.progress.job != nil && !r.progress.state.IsTerminal() && r.deps.Manager != nil {
+			_ = r.deps.Manager.Cancel(r.progress.job.ID)
 		}
-		r.progress = newProgress(r.keys, ref, msg.format, info, r.deps.DestDir)
+		r.progress = r.newProgressModel(ref, msg.format)
 		var cmd tea.Cmd
 		r.progress, cmd = r.progress.start()
 		r.screen = screenProgress
@@ -209,6 +237,12 @@ func (r *root) beginProbe(ref media.Ref) tea.Cmd {
 	r.stopProbe()
 	r.probeSeq++
 	seq := r.probeSeq
+
+	if r.deps.Demo {
+		return func() tea.Msg {
+			return probeDoneMsg{seq: seq, ref: ref, info: demoMedia()}
+		}
+	}
 
 	if r.deps.Manager == nil {
 		return func() tea.Msg {
@@ -237,6 +271,80 @@ func (r *root) stopProbe() {
 	}
 }
 
+// newProgressModel snapshots everything a job needs. Config is copied on
+// purpose: changing settings mid-download must not alter the running job.
+func (r root) newProgressModel(ref media.Ref, format media.Format) progressModel {
+	info := r.formats.info
+	if r.deps.Demo {
+		info = demoMedia()
+	}
+
+	m := newProgress(r.keys, ref, format, info, r.deps.DestDir)
+	m.manager = r.deps.Manager
+	m.cfg = r.deps.Config
+	m.reveal = r.deps.Reveal
+	m.demo = r.deps.Demo
+	return m
+}
+
+// shutdownGrace bounds how long quitting waits for a cancelled process group to
+// disappear. It matches the engine's SIGTERM→SIGKILL escalation plus slack.
+var shutdownGrace = 8 * time.Second
+
+// shutdown stops every live job before the program exits, so quitting never
+// leaves yt-dlp or ffmpeg running as orphans. The wait runs in a command: the
+// screen can render "stopping" instead of freezing for the kill grace period.
+func (r *root) shutdown() tea.Cmd {
+	if r.shuttingDown {
+		return nil
+	}
+
+	manager := r.deps.Manager
+	if manager == nil {
+		return tea.Quit
+	}
+
+	jobs := activeJobs(manager.List())
+	if len(jobs) == 0 {
+		return tea.Quit
+	}
+
+	r.shuttingDown = true
+	if r.screen == screenProgress {
+		r.progress.stopping = true
+	}
+
+	return func() tea.Msg {
+		for _, job := range jobs {
+			_ = manager.Cancel(job.ID)
+		}
+		waitForTerminal(jobs, shutdownGrace)
+		return quitMsg{}
+	}
+}
+
+// activeJobs filters a snapshot down to the jobs still worth cancelling.
+func activeJobs(jobs []*core.Job) []*core.Job {
+	live := make([]*core.Job, 0, len(jobs))
+	for _, job := range jobs {
+		if job != nil && !job.State().IsTerminal() {
+			live = append(live, job)
+		}
+	}
+	return live
+}
+
+// waitForTerminal polls until every job has stopped or max elapses.
+func waitForTerminal(jobs []*core.Job, max time.Duration) {
+	deadline := time.Now().Add(max)
+	for time.Now().Before(deadline) {
+		if len(activeJobs(jobs)) == 0 {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
 // back handles esc per screen: cancel on progress or probing, clear-then-quit
 // on home, plain return everywhere else.
 func (r root) back() (tea.Model, tea.Cmd) {
@@ -249,14 +357,28 @@ func (r root) back() (tea.Model, tea.Cmd) {
 		return r, nil
 
 	case screenProgress:
-		r.progress = r.progress.cancel()
-		r.screen = screenHome
-		r.home, _ = r.home.Update(noticeMsg{text: "download canceled"})
+		if r.progress.state.IsTerminal() {
+			r.screen = screenHome
+			return r, nil
+		}
+		if r.progress.demo {
+			r.progress = r.progress.requestCancel()
+			r.screen = screenHome
+			r.home, _ = r.home.Update(noticeMsg{text: "download canceled"})
+			return r, nil
+		}
+		if r.progress.stopping {
+			// The engine keeps killing the process group in the background.
+			r.screen = screenHome
+			r.home, _ = r.home.Update(noticeMsg{text: "stopping the download in the background"})
+			return r, nil
+		}
+		r.progress = r.progress.requestCancel()
 		return r, nil
 
 	case screenHome:
 		if r.home.empty() {
-			return r, tea.Quit
+			return r, r.shutdown()
 		}
 		r.home.clearInput()
 		return r, nil
@@ -311,6 +433,9 @@ func (r root) header() string {
 	if r.deps.Version != "" {
 		left += styleMuted.Render(" " + r.deps.Version)
 	}
+	if r.deps.Demo {
+		left += styleNotice.Render(" demo")
+	}
 	right := styleMuted.Render(shortenHome(r.deps.DestDir))
 
 	width := r.width
@@ -332,11 +457,32 @@ func (r root) footer() string {
 	case screenFormats:
 		return helpLine(r.keys.Up, r.keys.Down, r.keys.Tab, r.keys.Submit, r.keys.Dir, r.keys.Back)
 	case screenProgress:
-		return helpLine(r.keys.Back, r.keys.Quit)
+		return r.progressFooter()
 	case screenSettings:
 		return helpLine(r.keys.Save, r.keys.Back, r.keys.Quit)
 	default:
 		return helpLine(r.keys.Submit, r.keys.Paste, r.keys.Clear, r.keys.Settings, r.keys.Back)
+	}
+}
+
+// progressFooter offers only the actions that make sense for the job's state:
+// a running job can be cancelled, a failed one retried, a finished one revealed.
+func (r root) progressFooter() string {
+	switch {
+	case r.shuttingDown:
+		return helpLine(r.keys.Quit)
+	case r.progress.stopping:
+		return helpLine(r.keys.Quit)
+	case r.progress.state == core.StateDone:
+		return helpLine(r.keys.Reveal, r.keys.Submit, r.keys.Quit)
+	case r.progress.state == core.StateFailed:
+		return helpLine(r.keys.Retry, r.keys.Back, r.keys.Quit)
+	case r.progress.state == core.StateCanceled:
+		return helpLine(r.keys.Submit, r.keys.Back, r.keys.Quit)
+	case r.progress.demo:
+		return helpLine(r.keys.Back, r.keys.Quit)
+	default:
+		return helpLine(r.keys.Cancel, r.keys.Quit)
 	}
 }
 

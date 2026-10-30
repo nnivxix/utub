@@ -21,6 +21,7 @@ type settingsModel struct {
 	cfg       config.Config // working copy; saved only on success
 	dir       string        // bound to the directory input
 	fragments string        // bound to the fragment-count input
+	cookies   string        // bound to the cookies-from-browser input
 
 	width  int
 	height int
@@ -35,6 +36,7 @@ func newSettings(keys keyMap, cfg config.Config) settingsModel {
 		cfg:       cfg,
 		dir:       cfg.DownloadDir,
 		fragments: strconv.Itoa(cfg.ConcurrentFragments),
+		cookies:   cfg.CookiesFromBrowser,
 	}
 	model.build()
 	return model
@@ -74,6 +76,17 @@ func (s *settingsModel) build() {
 				}),
 
 			huh.NewSelect[string]().
+				Key("audio").
+				Title("Audio format").
+				Description("mp3 and m4a convert; original keeps the source stream").
+				Options(
+					huh.NewOption("Original stream (no conversion)", config.AudioOriginal),
+					huh.NewOption("M4A (AAC)", config.AudioM4A),
+					huh.NewOption("MP3", config.AudioMP3),
+				).
+				Value(&s.cfg.DefaultAudioFormat),
+
+			huh.NewSelect[string]().
 				Key("downloader").
 				Title("Downloader").
 				Options(
@@ -82,6 +95,12 @@ func (s *settingsModel) build() {
 					huh.NewOption("aria2c only", config.DownloaderAria2c),
 				).
 				Value(&s.cfg.Downloader),
+
+			huh.NewInput().
+				Key("cookies").
+				Title("Cookies from browser").
+				Description("e.g. safari, chrome, firefox:default — empty turns it off").
+				Value(&s.cookies),
 		),
 	).WithWidth(s.formWidth())
 }
@@ -130,6 +149,7 @@ func (s settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 func (s settingsModel) save() (settingsModel, tea.Cmd) {
 	cfg := s.cfg
 	cfg.DownloadDir = strings.TrimSpace(s.dir)
+	cfg.CookiesFromBrowser = strings.TrimSpace(s.cookies)
 
 	fragments, err := strconv.Atoi(strings.TrimSpace(s.fragments))
 	if err != nil {

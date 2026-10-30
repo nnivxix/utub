@@ -62,27 +62,35 @@ func (m probingModel) View() string {
 // stderr line stays in the error chain for logs; nobody should have to read a
 // traceback to learn a video is private.
 func humanProbeError(err error) string {
-	var msg string
-
-	switch {
-	case errors.Is(err, core.ErrBotCheck):
-		msg = "YouTube wants a sign-in check — try again in a minute"
-	case errors.Is(err, core.ErrPrivate):
-		msg = "that video is private"
-	case errors.Is(err, core.ErrAgeRestricted):
-		msg = "that video is age-restricted"
-	case errors.Is(err, core.ErrGeoBlocked):
-		msg = "that video is not available in your region"
-	case errors.Is(err, core.ErrUnavailable):
-		msg = "that video is unavailable"
-	case errors.Is(err, core.ErrHTTPStatus):
-		msg = "YouTube returned an HTTP error — try again"
-	case errors.Is(err, core.ErrMissingFFmpeg):
-		msg = "ffmpeg is missing — install it to mux downloads"
-	default:
+	msg := humanEngineError(err)
+	if msg == "" {
 		msg = "could not read this video — " + firstLine(err.Error())
 	}
 	return msg + " (enter to retry)"
+}
+
+// humanEngineError translates core's classified sentinels, or returns "" when
+// the error is not one of them. The two callers add their own fallback wording:
+// a probe could not read the link, a download failed.
+func humanEngineError(err error) string {
+	switch {
+	case errors.Is(err, core.ErrBotCheck):
+		return "YouTube wants a sign-in check — try again in a minute"
+	case errors.Is(err, core.ErrPrivate):
+		return "that video is private"
+	case errors.Is(err, core.ErrAgeRestricted):
+		return "that video is age-restricted"
+	case errors.Is(err, core.ErrGeoBlocked):
+		return "that video is not available in your region"
+	case errors.Is(err, core.ErrUnavailable):
+		return "that video is unavailable"
+	case errors.Is(err, core.ErrHTTPStatus):
+		return "YouTube returned an HTTP error — try again"
+	case errors.Is(err, core.ErrMissingFFmpeg):
+		return "ffmpeg is missing — install it to mux downloads"
+	default:
+		return ""
+	}
 }
 
 // firstLine keeps a multi-line engine message to the part that fits on one

@@ -6,7 +6,7 @@ import (
 	"github.com/nnivxix/utub/internal/media"
 )
 
-// TODO(M1): replace demoMedia with a real core.Manager.Probe result.
+// demoMedia is the canned result --demo uses instead of a real probe.
 //
 // The format list is deliberately realistic — including VP9 and AV1 rows that
 // the H.264 policy must filter out, and a muxed 360p that must lose to the
@@ -17,7 +17,7 @@ func demoMedia() media.MediaInfo {
 
 	return media.MediaInfo{
 		ID:        "dQw4w9WgXcQ",
-		Title:     "Demo video — probing lands in M1",
+		Title:     "Demo video (offline mode)",
 		Channel:   "utub",
 		Uploader:  "utub",
 		Duration:  4*time.Minute + 12*time.Second,

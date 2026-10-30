@@ -205,8 +205,9 @@ func TestProgressCancelIsSticky(t *testing.T) {
 
 	info := demoMedia()
 	m := newProgress(defaultKeyMap(), media.Ref{ID: info.ID}, info.VideoFormats()[0], info, "/tmp")
+	m.demo = true
 
-	m = m.cancel()
+	m = m.requestCancel()
 	if m.state != core.StateCanceled {
 		t.Fatalf("state = %s, want canceled", m.state)
 	}
@@ -347,7 +348,9 @@ func TestSettingsSaveRejectsUnwritableDirectory(t *testing.T) {
 func TestRootCancelFromProgressReturnsHome(t *testing.T) {
 	t.Parallel()
 
-	r := newRoot(testDeps())
+	deps := testDeps()
+	deps.Demo = true
+	r := newRoot(deps)
 	model, _ := r.Update(navigateMsg{screen: screenProgress, format: videoFormat(t)})
 	r = model.(root)
 
