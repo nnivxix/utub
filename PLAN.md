@@ -35,9 +35,10 @@ Full design rationale: `docs/architecture.md` (it is the spec; this file is the 
 
 ## 2. Status snapshot
 
-**Done: steps 0–9.** Skeleton, config, media, platform, binmgr, the `core` seam, and every
-TUI screen. **The TUI works end-to-end but runs on demo data** — no bytes have ever been
-downloaded by this codebase.
+**Done: steps 0–9 and M1.1–M1.3 + M1.6.** Skeleton, config, media, platform, binmgr, the
+`core` seam, every TUI screen, real probing with a spinner, format selection and classified
+engine errors. **The picker now shows real YouTube formats; downloads are still simulated** —
+no bytes have been written by this codebase yet.
 
 | # | Deliverable | State |
 |---|---|---|
@@ -51,7 +52,7 @@ downloaded by this codebase.
 | 7 | TUI foundation (home, router, keys, styles) | done |
 | 8 | TUI screens (formats, progress, settings) | done, 32 tests |
 | 9 | wrap: fmt/vet/test, docs truth-up, commits | done |
-| **M1** | **engine: probe / select / download / progress / errors / manager** | **M1.1–M1.2 done (probe + select); M1.3 next** |
+| **M1** | **engine: probe / select / download / progress / errors / manager** | **M1.1–M1.3 and M1.6 done; M1.4 next** |
 | M3 | TUI complete (real data, probing state, real cancel) | blocked on M1 |
 | M4 | `internal/api` + `cmd/utubd` | not started |
 | M5 | Vue 3 SPA (`web/`) | not started |
@@ -76,11 +77,12 @@ e0f4475  chore: project skeleton
 Scale: ~5,900 lines of Go across `internal/` + `cmd/`, 94 test functions, 7 packages green.
 
 **What actually works today:** `--doctor`, `--version`, the full TUI navigation, real settings
-persistence to `config.toml`, real URL validation (all YouTube URL shapes), H.264-only format
-filtering over a realistic demo dataset, and a simulated progress screen.
+persistence to `config.toml`, real URL validation (all YouTube URL shapes), real `yt-dlp -J`
+probing behind a spinner (with cancel and readable failures), H.264-only format selection, and
+a simulated progress screen.
 
-**What is fake today:** `core.Probe`, `core.Start`, `core.Cancel`, format lists, byte progress.
-Four `TODO(M1)` markers point at exactly these places (see §6).
+**What is fake today:** `core.Start`, `core.Cancel`, `core.List` (they return `ErrNotImplemented`),
+the demo ticker in the progress screen, and byte progress.
 
 ---
 
@@ -167,10 +169,10 @@ docs/architecture.md        the design spec (milestone table has a Status column
 
 | Marker | File | Replace with |
 |---|---|---|
-| demo formats | `internal/tui/demo.go` `demoMedia()` | `Manager.Probe(ref.URL)` |
+| demo formats | `internal/tui/demo.go` `demoMedia()` | replaced by `Manager.Probe` in the picker (M1.3); demo data remains the progress fallback until M1.8 |
 | demo progress | `internal/tui/progress.go` `demoTick`/`advance` | `Manager.Start` + `<-chan Event` |
-| `NoopManager` | `cmd/utub/main.go` `runTUI()` | real manager |
-| core stubs | `internal/core/{probe,select,download,progress}.go` | implementations (see M1) |
+| `NoopManager` | `cmd/utub/main.go` `runTUI()` | replaced by `core.Engine` (M1.3); Start/Cancel fill in at M1.7 |
+| core stubs | `internal/core/{probe,select,download,progress}.go` | probe + select + errors done; download/progress remain |
 
 ---
 
@@ -204,13 +206,15 @@ Work in two reviewable halves. Do M1.1–M1.3 first (visible payoff: real data i
 - `warn` (→ `Event.Warn`) only for an unknown height or a request above the 1080p ceiling.
 - **Gate:** table tests assert the exact string for every format and audio format; covered.
 
-#### M1.3 Wire probe into the TUI (M3 part 1, ~0.5 d)
+#### M1.3 Wire probe into the TUI (M3 part 1) — **done**
 
-- New `screenProbing` with spinner; `esc` aborts the probe ctx.
-- `probeDoneMsg` / `probeErrMsg` produced by a `tea.Cmd` calling `Manager.Probe`; on error stay
-  on home with a readable message (private / age-gated / geo / bot-check) and a retry hint.
-- `Deps.Manager` becomes the real manager instead of `core.NoopManager{}`.
-- **Gate:** real link → spinner → real formats; private video → readable error, no traceback.
+- `screenProbing` with a spinner; `esc` cancels the probe context and a sequence number drops
+  any result that arrives late.
+- `probeDoneMsg` / `probeErrMsg` come from a `tea.Cmd` calling `Manager.Probe`; a failure
+  returns to home with a readable sentence and a retry hint.
+- `Deps.Manager` is `core.Engine`, which probes for real and stubs the download half until M1.7.
+- **Gate:** covered by router tests plus a live pty run (spinner → real formats); classified
+  failures are exercised with canned errors.
 
 #### M1.4 `core/progress.go` — template parser + coalescer (~0.5 d)
 
@@ -231,11 +235,13 @@ Work in two reviewable halves. Do M1.1–M1.3 first (visible payoff: real data i
 - Parse stdout for the **real output path**; never derive it.
 - **Gate:** argv unit tests + one real 1080p download that plays in QuickTime.
 
-#### M1.6 `core/errors.go` — classify stderr (~0.25 d)
+#### M1.6 `core/errors.go` — classify stderr — **done (ahead of M1.4/M1.5)**
 
-`ErrBotCheck` (hint: set `cookies_from_browser`), `ErrPrivate`, `ErrAgeRestricted`, `ErrGeoBlocked`,
-`ErrUnavailable`, `ErrHTTPStatus`, `ErrMissingFFmpeg`; wrap the offending line, preserve `*exec.ExitError`.
-**Gate:** table tests from real stderr samples.
+`ErrBotCheck`, `ErrPrivate`, `ErrAgeRestricted`, `ErrGeoBlocked`, `ErrUnavailable`, `ErrHTTPStatus`,
+`ErrMissingFFmpeg`. Each wraps the offending `ERROR:` line and keeps the exit error in the chain,
+so `errors.Is` works for both. Rule order is explicit: "Sign in to confirm your age" must match
+age-restriction before the bot-check needle.
+**Gate:** table tests from real stderr samples; covered.
 
 #### M1.7 `core/manager.go` — the real Manager (~0.75 d)
 
@@ -335,7 +341,7 @@ go build ./... && go vet ./... && go test ./...
 Then:
 
 1. Read `docs/architecture.md` §5–§7 (seam, pipeline, download invocation) — it is the contract.
-2. Start **M1.3** (wire `Manager.Probe` into the TUI). Do not touch `download.go` until the picker shows real data.
+2. Start **M1.4** (`internal/core/progress.go`), or M1.5 if the progress parser needs the argv first.
 3. After each M1.x: `gofmt -l .`, `go vet ./...`, `go test ./...`, then commit with the existing
    `type(scope): summary` style.
 4. Run the TUI through a pty (script pattern in the session log) after any TUI-visible change —

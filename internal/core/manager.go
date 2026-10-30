@@ -58,3 +58,32 @@ func (NoopManager) Cancel(string) error { return ErrNotImplemented }
 func (NoopManager) List() []*Job { return nil }
 
 var _ Manager = NoopManager{}
+
+// Engine is the concrete Manager. Probing is wired; the job registry and
+// subprocess lifecycle (Start/Cancel/List) land in M1.7, so the TUI can already
+// resolve real formats without waiting for the download half.
+//
+// The zero value is usable and looks up yt-dlp on PATH.
+//
+// TODO(M1.7): Start needs the probed MediaInfo in Request so it never re-probes.
+type Engine struct {
+	Prober Prober
+}
+
+// Probe implements Manager.
+func (e *Engine) Probe(ctx context.Context, rawURL string) (media.MediaInfo, error) {
+	return e.Prober.Probe(ctx, rawURL)
+}
+
+// Start implements Manager. TODO(M1.7): spawn the subprocess and stream events.
+func (e *Engine) Start(Request) (*Job, <-chan Event, error) {
+	return nil, nil, ErrNotImplemented
+}
+
+// Cancel implements Manager. TODO(M1.7): cancel + process-group kill.
+func (e *Engine) Cancel(string) error { return ErrNotImplemented }
+
+// List implements Manager. TODO(M1.7): snapshot the job registry.
+func (e *Engine) List() []*Job { return nil }
+
+var _ Manager = (*Engine)(nil)

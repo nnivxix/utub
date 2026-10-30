@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,13 +16,58 @@ import (
 	"github.com/nnivxix/utub/internal/media"
 )
 
+// fakeManager is the engine seam in tests: probing returns canned data and the
+// download half reports ErrNotImplemented until M1.7.
+type fakeManager struct {
+	info media.MediaInfo
+	err  error
+}
+
+func (f fakeManager) Probe(context.Context, string) (media.MediaInfo, error) {
+	if f.err != nil {
+		return media.MediaInfo{}, f.err
+	}
+	return f.info, nil
+}
+
+func (fakeManager) Start(core.Request) (*core.Job, <-chan core.Event, error) {
+	return nil, nil, core.ErrNotImplemented
+}
+
+func (fakeManager) Cancel(string) error { return core.ErrNotImplemented }
+
+func (fakeManager) List() []*core.Job { return nil }
+
 func testDeps() Deps {
 	return Deps{
-		Manager: core.NoopManager{},
+		Manager: fakeManager{info: demoMedia()},
 		Config:  config.Default(),
 		DestDir: filepath.Join(os.TempDir(), "utub-test-downloads"),
 		Version: "test",
 	}
+}
+
+// runCmdMsgs executes a command and flattens one level of tea.BatchMsg, which is
+// what the router returns when it starts a probe and the spinner together.
+func runCmdMsgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+
+	msgs := make([]tea.Msg, 0, len(batch))
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		msgs = append(msgs, c())
+	}
+	return msgs
 }
 
 func runeKey(s string) tea.KeyPressMsg { return tea.KeyPressMsg{Code: rune(s[0]), Text: s} }
@@ -50,7 +96,7 @@ func TestHomeRejectsNonYouTubeLink(t *testing.T) {
 	}
 }
 
-func TestHomeSubmitNavigatesToFormats(t *testing.T) {
+func TestHomeSubmitNavigatesToProbing(t *testing.T) {
 	t.Parallel()
 
 	h := newHome(defaultKeyMap())
@@ -65,8 +111,8 @@ func TestHomeSubmitNavigatesToFormats(t *testing.T) {
 	if !ok {
 		t.Fatalf("command produced %T, want navigateMsg", cmd())
 	}
-	if nav.screen != screenFormats {
-		t.Fatalf("screen = %s, want formats", nav.screen)
+	if nav.screen != screenProbing {
+		t.Fatalf("screen = %s, want probing", nav.screen)
 	}
 	if nav.ref.ID != "dQw4w9WgXcQ" {
 		t.Fatalf("id = %q, want dQw4w9WgXcQ", nav.ref.ID)

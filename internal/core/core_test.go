@@ -213,6 +213,30 @@ func TestNoopManagerReturnsErrNotImplemented(t *testing.T) {
 	}
 }
 
+// TestEngineProbeDelegatesToTheProber pins the seam the TUI now uses: Engine is
+// a real Manager for probing, with the download half still unimplemented.
+func TestEngineProbeDelegatesToTheProber(t *testing.T) {
+	t.Parallel()
+
+	var calls []call
+	engine := &Engine{Prober: Prober{Run: stubRunner(fixture(t, "video.json"), nil, nil, &calls)}}
+
+	info, err := engine.Probe(context.Background(), "https://youtu.be/aqz-KE-bpKQ")
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if info.ID != "aqz-KE-bpKQ" {
+		t.Errorf("ID = %q, want the fixture's video", info.ID)
+	}
+	if len(calls) != 1 {
+		t.Errorf("ran %d commands, want 1", len(calls))
+	}
+
+	if _, _, err := engine.Start(Request{}); !errors.Is(err, ErrNotImplemented) {
+		t.Errorf("Start() error = %v, want ErrNotImplemented until M1.7", err)
+	}
+}
+
 // TestNoopManagerProbeReturnsZeroMediaInfo pins the shape surfaces can rely on
 // while M1 is unwritten: no partial MediaInfo, no panics.
 func TestNoopManagerProbeReturnsZeroMediaInfo(t *testing.T) {

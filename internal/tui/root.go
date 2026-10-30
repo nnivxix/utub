@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -19,6 +20,7 @@ type screen int
 
 const (
 	screenHome screen = iota
+	screenProbing
 	screenFormats
 	screenProgress
 	screenSettings
@@ -26,6 +28,8 @@ const (
 
 func (s screen) String() string {
 	switch s {
+	case screenProbing:
+		return "probing"
 	case screenFormats:
 		return "formats"
 	case screenProgress:
@@ -40,7 +44,7 @@ func (s screen) String() string {
 // Deps is everything the TUI needs from the rest of the program. It is a plain
 // struct rather than globals so a test can build one without touching the disk.
 type Deps struct {
-	Manager core.Manager  // engine seam; NoopManager until M1
+	Manager core.Manager  // engine seam; core.Engine in the binary
 	Config  config.Config // snapshot at launch, refreshed after a settings save
 	DestDir string        // resolved, absolute download directory
 	Version string        // build stamp
@@ -54,11 +58,17 @@ type root struct {
 
 	screen   screen
 	home     homeModel
+	probing  probingModel
 	formats  formatsModel
 	progress progressModel
 	settings settingsModel
 
 	ref media.Ref // last link the user submitted
+
+	// probeCancel stops the in-flight probe; probeSeq invalidates its result
+	// when the user cancels or submits a different link.
+	probeCancel context.CancelFunc
+	probeSeq    int
 
 	width  int
 	height int
@@ -84,6 +94,26 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case navigateMsg:
 		return r.navigate(msg)
 
+	case probeDoneMsg:
+		if r.screen != screenProbing || msg.seq != r.probeSeq {
+			return r, nil
+		}
+		r.stopProbe()
+		r.ref = msg.ref
+		r.formats = newFormats(r.keys, msg.info, msg.ref)
+		r.formats, _ = r.formats.Update(tea.WindowSizeMsg{Width: r.width, Height: r.height})
+		r.screen = screenFormats
+		return r, nil
+
+	case probeErrMsg:
+		if r.screen != screenProbing || msg.seq != r.probeSeq {
+			return r, nil
+		}
+		r.stopProbe()
+		r.screen = screenHome
+		r.home = r.home.setError(humanProbeError(msg.err))
+		return r, nil
+
 	case configSavedMsg:
 		r.deps.Config = msg.cfg
 		r.deps.DestDir = msg.dir
@@ -98,6 +128,7 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, r.keys.Quit):
+			r.stopProbe()
 			return r, tea.Quit
 		case key.Matches(msg, r.keys.Back):
 			return r.back()
@@ -106,6 +137,8 @@ func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	switch r.screen {
+	case screenProbing:
+		r.probing, cmd = r.probing.Update(msg)
 	case screenFormats:
 		r.formats, cmd = r.formats.Update(msg)
 	case screenProgress:
@@ -123,6 +156,7 @@ func (r *root) resize(msg tea.WindowSizeMsg) {
 	r.width, r.height = msg.Width, msg.Height
 
 	r.home, _ = r.home.Update(msg)
+	r.probing, _ = r.probing.Update(msg)
 	r.formats, _ = r.formats.Update(msg)
 	r.progress, _ = r.progress.Update(msg)
 	r.settings, _ = r.settings.Update(msg)
@@ -137,13 +171,12 @@ func (r root) navigate(msg navigateMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.screen {
-	case screenFormats:
+	case screenProbing:
 		r.ref = ref
-		info := demoMedia() // TODO(M1): r.deps.Manager.Probe(ref.URL)
-		r.formats = newFormats(r.keys, info, ref)
-		r.formats, _ = r.formats.Update(tea.WindowSizeMsg{Width: r.width, Height: r.height})
-		r.screen = screenFormats
-		return r, nil
+		r.probing = newProbing(ref)
+		probe := r.beginProbe(ref)
+		r.screen = screenProbing
+		return r, tea.Batch(probe, r.probing.Init())
 
 	case screenProgress:
 		r.ref = ref
@@ -169,10 +202,52 @@ func (r root) navigate(msg navigateMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// back handles esc per screen: cancel on progress, clear-then-quit on home,
-// plain return everywhere else.
+// beginProbe starts Manager.Probe in the background. The context is cancelable
+// so esc can abandon a hung yt-dlp, and seq keeps a late answer from replacing
+// a newer request.
+func (r *root) beginProbe(ref media.Ref) tea.Cmd {
+	r.stopProbe()
+	r.probeSeq++
+	seq := r.probeSeq
+
+	if r.deps.Manager == nil {
+		return func() tea.Msg {
+			return probeErrMsg{seq: seq, ref: ref, err: core.ErrNotImplemented}
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	r.probeCancel = cancel
+
+	manager := r.deps.Manager
+	return func() tea.Msg {
+		info, err := manager.Probe(ctx, ref.URL)
+		if err != nil {
+			return probeErrMsg{seq: seq, ref: ref, err: err}
+		}
+		return probeDoneMsg{seq: seq, ref: ref, info: info}
+	}
+}
+
+// stopProbe cancels the in-flight probe, if any.
+func (r *root) stopProbe() {
+	if r.probeCancel != nil {
+		r.probeCancel()
+		r.probeCancel = nil
+	}
+}
+
+// back handles esc per screen: cancel on progress or probing, clear-then-quit
+// on home, plain return everywhere else.
 func (r root) back() (tea.Model, tea.Cmd) {
 	switch r.screen {
+	case screenProbing:
+		r.stopProbe()
+		r.probeSeq++ // a result already in flight must not open the picker
+		r.screen = screenHome
+		r.home, _ = r.home.Update(noticeMsg{text: "probe canceled"})
+		return r, nil
+
 	case screenProgress:
 		r.progress = r.progress.cancel()
 		r.screen = screenHome
@@ -218,6 +293,8 @@ func (r root) render() string {
 
 func (r root) body() string {
 	switch r.screen {
+	case screenProbing:
+		return r.probing.View()
 	case screenFormats:
 		return r.formats.View()
 	case screenProgress:
@@ -250,6 +327,8 @@ func (r root) header() string {
 
 func (r root) footer() string {
 	switch r.screen {
+	case screenProbing:
+		return helpLine(r.keys.Back, r.keys.Quit)
 	case screenFormats:
 		return helpLine(r.keys.Up, r.keys.Down, r.keys.Tab, r.keys.Submit, r.keys.Dir, r.keys.Back)
 	case screenProgress:

@@ -344,21 +344,6 @@ func TestSettingsSaveRejectsUnwritableDirectory(t *testing.T) {
 	}
 }
 
-func TestRootNavigateBuildsFormatsScreen(t *testing.T) {
-	t.Parallel()
-
-	r := newRoot(testDeps())
-	model, _ := r.Update(navigateMsg{screen: screenFormats, ref: media.Ref{ID: "dQw4w9WgXcQ"}})
-	r = model.(root)
-
-	if r.screen != screenFormats {
-		t.Fatalf("screen = %s, want formats", r.screen)
-	}
-	if got := r.View().Content; !strings.Contains(got, "H.264 · max 1080p") {
-		t.Fatalf("view = %q, want the picker", got)
-	}
-}
-
 func TestRootCancelFromProgressReturnsHome(t *testing.T) {
 	t.Parallel()
 

@@ -132,7 +132,7 @@ func (h homeModel) submit() (homeModel, tea.Cmd) {
 		h.notice = "playlist link — only this video will be downloaded"
 	}
 
-	return h, func() tea.Msg { return navigateMsg{screen: screenFormats, ref: ref} }
+	return h, func() tea.Msg { return navigateMsg{screen: screenProbing, ref: ref} }
 }
 
 func (h *homeModel) clearInput() {
@@ -141,6 +141,13 @@ func (h *homeModel) clearInput() {
 }
 
 func (h homeModel) empty() bool { return strings.TrimSpace(h.input.Value()) == "" }
+
+// setError shows a failed probe on the status line. The URL stays in the field,
+// so enter retries it and typing clears the message.
+func (h homeModel) setError(text string) homeModel {
+	h.errText, h.hasRef, h.notice = text, false, ""
+	return h
+}
 
 func (h homeModel) fieldWidth() int {
 	width := h.width

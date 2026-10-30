@@ -2,8 +2,7 @@
 //
 // With no flags it starts the interactive TUI. --doctor reports the config
 // location and the external binaries the engine shells out to; --version prints
-// the build stamp. The TUI currently runs against core.NoopManager, so it can
-// render and navigate before the engine lands in M1.
+// the build stamp. Probing runs against core.Engine; downloading lands in M1.
 package main
 
 import (
@@ -68,7 +67,7 @@ func runTUI() int {
 	}
 
 	deps := tui.Deps{
-		Manager: core.NoopManager{},
+		Manager: &core.Engine{},
 		Config:  cfg,
 		DestDir: dir,
 		Version: version,

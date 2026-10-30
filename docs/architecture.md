@@ -248,8 +248,8 @@ same-origin.
 | 7 | TUI foundation | done |
 | 8 | TUI screens | done |
 | 9 | wrap: fmt, vet, test, commit | done |
-| M1 | `core` probe/select/download/progress — real behaviour | **next** |
-| M3 | TUI complete: real data, probing state, cancel kills the process group | blocked on M1 |
+| M1 | `core` probe/select/download/progress — real behaviour | probe, select, errors done; download/progress/manager next |
+| M3 | TUI complete: real data, probing state, cancel kills the process group | probing + real formats done; downloads pending M1.8 |
 | M4 | `internal/api` + `utubd` | not started |
 | M5 | Vue SPA | not started |
 | M6 | Wails desktop | not started |

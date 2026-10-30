@@ -31,3 +31,20 @@ type configSavedMsg struct {
 	cfg config.Config
 	dir string
 }
+
+// probeDoneMsg carries a successful probe back to the router. seq identifies
+// the request that produced it, so a late result from a canceled probe cannot
+// open the picker for a newer link.
+type probeDoneMsg struct {
+	seq  int
+	ref  media.Ref
+	info media.MediaInfo
+}
+
+// probeErrMsg carries a failed probe back to the router, which returns to the
+// home screen with a readable reason.
+type probeErrMsg struct {
+	seq int
+	ref media.Ref
+	err error
+}
