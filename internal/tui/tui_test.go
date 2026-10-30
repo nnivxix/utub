@@ -268,21 +268,17 @@ func TestHeaderShowsShortenedDownloadDir(t *testing.T) {
 	}
 }
 
-func TestViewRendersPlaceholder(t *testing.T) {
+func TestViewRendersProgressScreen(t *testing.T) {
 	t.Parallel()
 
 	r := newRoot(testDeps())
-	model, _ := r.Update(navigateMsg{screen: screenProgress})
+	model, _ := r.Update(navigateMsg{screen: screenProgress, format: demoMedia().VideoFormats(false)[0]})
 	r = model.(root)
 
 	view := r.View().Content
-	if !strings.Contains(view, "Download progress") {
-		t.Fatalf("view = %q, want the progress placeholder title", view)
-	}
-	if !strings.Contains(view, "arrives in step 8") {
-		t.Fatalf("view = %q, want the step-8 marker", view)
-	}
-	if !strings.Contains(view, "esc") {
-		t.Fatalf("view = %q, want the back/quit footer", view)
+	for _, want := range []string{"video", "audio", "merge", "saving to", "esc"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view = %q, want it to contain %q", view, want)
+		}
 	}
 }

@@ -8,15 +8,18 @@ import "charm.land/lipgloss/v2"
 // applyTheme rebuilds. Bubble Tea runs Update and View on one goroutine, so
 // reassigning these between frames is safe.
 var (
-	styleBrand   = lipgloss.NewStyle()
-	styleMuted   = lipgloss.NewStyle()
-	styleDanger  = lipgloss.NewStyle()
-	styleGood    = lipgloss.NewStyle()
-	styleKey     = lipgloss.NewStyle()
-	styleHeading = lipgloss.NewStyle()
-	styleNotice  = lipgloss.NewStyle()
-	styleField   = lipgloss.NewStyle()
-	styleFocused = lipgloss.NewStyle()
+	styleBrand    = lipgloss.NewStyle()
+	styleMuted    = lipgloss.NewStyle()
+	styleDanger   = lipgloss.NewStyle()
+	styleGood     = lipgloss.NewStyle()
+	styleKey      = lipgloss.NewStyle()
+	styleHeading  = lipgloss.NewStyle()
+	styleNotice   = lipgloss.NewStyle()
+	styleField    = lipgloss.NewStyle()
+	styleFocused  = lipgloss.NewStyle()
+	styleSelected = lipgloss.NewStyle()
+	styleBar      = lipgloss.NewStyle()
+	styleBarEmpty = lipgloss.NewStyle()
 )
 
 // Dark-first: terminals without background-colour reporting keep this palette.
@@ -44,4 +47,7 @@ func applyTheme(dark bool) {
 		BorderForeground(muted).
 		Padding(0, 1)
 	styleFocused = styleField.BorderForeground(accent)
+	styleSelected = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	styleBar = lipgloss.NewStyle().Foreground(accent)
+	styleBarEmpty = lipgloss.NewStyle().Foreground(muted)
 }

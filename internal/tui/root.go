@@ -41,20 +41,24 @@ func (s screen) String() string {
 // struct rather than globals so a test can build one without touching the disk.
 type Deps struct {
 	Manager core.Manager  // engine seam; NoopManager until M1
-	Config  config.Config // snapshot at launch
+	Config  config.Config // snapshot at launch, refreshed after a settings save
 	DestDir string        // resolved, absolute download directory
 	Version string        // build stamp
 }
 
-// root is the router: it owns the window chrome (header, footer, sizing) and
-// decides which screen is visible.
+// root is the router: it owns the window chrome (header, footer, sizing), the
+// global keys, and which screen is visible.
 type root struct {
 	deps Deps
 	keys keyMap
 
-	screen screen
-	home   homeModel
-	ref    media.Ref // last link the user submitted
+	screen   screen
+	home     homeModel
+	formats  formatsModel
+	progress progressModel
+	settings settingsModel
+
+	ref media.Ref // last link the user submitted
 
 	width  int
 	height int
@@ -74,47 +78,118 @@ func (r root) Init() tea.Cmd {
 func (r root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		r.width, r.height = msg.Width, msg.Height
-		r.home, _ = r.home.Update(msg)
+		r.resize(msg)
 		return r, nil
 
 	case navigateMsg:
-		r.screen = msg.screen
-		if msg.ref.ID != "" {
-			r.ref = msg.ref
-		}
+		return r.navigate(msg)
+
+	case configSavedMsg:
+		r.deps.Config = msg.cfg
+		r.deps.DestDir = msg.dir
+		r.screen = screenHome
+		r.home, _ = r.home.Update(noticeMsg{text: "settings saved — downloading to " + shortenHome(msg.dir)})
 		return r, nil
 
 	case tea.BackgroundColorMsg:
 		applyTheme(msg.IsDark())
 		return r, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, r.keys.Quit):
 			return r, tea.Quit
-
 		case key.Matches(msg, r.keys.Back):
-			if r.screen != screenHome {
-				r.screen = screenHome
-				return r, nil
-			}
-			// On home, esc clears the field first and only quits once there is
-			// nothing left to clear.
-			if r.home.empty() {
-				return r, tea.Quit
-			}
-			r.home.clearInput()
-			return r, nil
+			return r.back()
 		}
 	}
 
-	if r.screen == screenHome {
-		var cmd tea.Cmd
+	var cmd tea.Cmd
+	switch r.screen {
+	case screenFormats:
+		r.formats, cmd = r.formats.Update(msg)
+	case screenProgress:
+		r.progress, cmd = r.progress.Update(msg)
+	case screenSettings:
+		r.settings, cmd = r.settings.Update(msg)
+	default:
 		r.home, cmd = r.home.Update(msg)
-		return r, cmd
 	}
-	return r, nil
+	return r, cmd
+}
+
+// resize keeps every screen's layout in sync with the terminal.
+func (r *root) resize(msg tea.WindowSizeMsg) {
+	r.width, r.height = msg.Width, msg.Height
+
+	r.home, _ = r.home.Update(msg)
+	r.formats, _ = r.formats.Update(msg)
+	r.progress, _ = r.progress.Update(msg)
+	r.settings, _ = r.settings.Update(msg)
+}
+
+// navigate builds the destination screen from the current config and the
+// message payload, then switches to it.
+func (r root) navigate(msg navigateMsg) (tea.Model, tea.Cmd) {
+	ref := msg.ref
+	if ref.ID == "" {
+		ref = r.ref
+	}
+
+	switch msg.screen {
+	case screenFormats:
+		r.ref = ref
+		info := demoMedia() // TODO(M1): r.deps.Manager.Probe(ref.URL)
+		r.formats = newFormats(r.keys, info, ref, r.deps.Config.VideoCodec == config.CodecAny)
+		r.formats, _ = r.formats.Update(tea.WindowSizeMsg{Width: r.width, Height: r.height})
+		r.screen = screenFormats
+		return r, nil
+
+	case screenProgress:
+		r.ref = ref
+		info := r.formats.info
+		if info.Title == "" {
+			info = demoMedia()
+		}
+		r.progress = newProgress(r.keys, ref, msg.format, info, r.deps.DestDir)
+		var cmd tea.Cmd
+		r.progress, cmd = r.progress.start()
+		r.screen = screenProgress
+		return r, cmd
+
+	case screenSettings:
+		r.settings = newSettings(r.keys, r.deps.Config)
+		r.settings, _ = r.settings.Update(tea.WindowSizeMsg{Width: r.width, Height: r.height})
+		r.screen = screenSettings
+		return r, r.settings.Init()
+
+	default:
+		r.screen = screenHome
+		return r, nil
+	}
+}
+
+// back handles esc per screen: cancel on progress, clear-then-quit on home,
+// plain return everywhere else.
+func (r root) back() (tea.Model, tea.Cmd) {
+	switch r.screen {
+	case screenProgress:
+		r.progress = r.progress.cancel()
+		r.screen = screenHome
+		r.home, _ = r.home.Update(noticeMsg{text: "download canceled"})
+		return r, nil
+
+	case screenHome:
+		if r.home.empty() {
+			return r, tea.Quit
+		}
+		r.home.clearInput()
+		return r, nil
+
+	default:
+		r.screen = screenHome
+		return r, nil
+	}
 }
 
 // View returns the frame. Alt-screen is a property of the view in Bubble Tea v2
@@ -141,17 +216,14 @@ func (r root) render() string {
 	return content + "\n" + footer
 }
 
-// body renders the active screen. Formats, progress and settings are labelled
-// placeholders until step 8; routing itself is real, which is what step 7 is
-// for.
 func (r root) body() string {
 	switch r.screen {
 	case screenFormats:
-		return placeholder("Format picker", r.ref.URL)
+		return r.formats.View()
 	case screenProgress:
-		return placeholder("Download progress", r.ref.URL)
+		return r.progress.View()
 	case screenSettings:
-		return placeholder("Settings", "default directory: "+shortenHome(r.deps.DestDir))
+		return r.settings.View()
 	default:
 		return r.home.View()
 	}
@@ -177,23 +249,16 @@ func (r root) header() string {
 }
 
 func (r root) footer() string {
-	if r.screen == screenHome {
+	switch r.screen {
+	case screenFormats:
+		return helpLine(r.keys.Up, r.keys.Down, r.keys.Tab, r.keys.Submit, r.keys.Dir, r.keys.Back)
+	case screenProgress:
+		return helpLine(r.keys.Back, r.keys.Quit)
+	case screenSettings:
+		return helpLine(r.keys.Save, r.keys.Back, r.keys.Quit)
+	default:
 		return helpLine(r.keys.Submit, r.keys.Paste, r.keys.Clear, r.keys.Settings, r.keys.Back)
 	}
-	return helpLine(r.keys.Back, r.keys.Quit)
-}
-
-// placeholder renders a screen that exists in the router but is not built yet.
-func placeholder(title, detail string) string {
-	var b strings.Builder
-	b.WriteString(styleHeading.Render(title))
-	b.WriteString("\n\n")
-	if detail != "" {
-		b.WriteString(styleMuted.Render(detail))
-		b.WriteString("\n\n")
-	}
-	b.WriteString(styleNotice.Render("arrives in step 8"))
-	return b.String()
 }
 
 // shortenHome renders /Users/you/Movies/utub as ~/Movies/utub.
