@@ -123,6 +123,7 @@ http_chunk_size      = "10M"
 downloader           = "auto"        # auto | builtin | aria2c
 filename_template    = "%(title)s [%(id)s].%(ext)s"
 default_audio_format = "original"    # original | m4a | mp3
+cookies_from_browser  = ""           # "", safari, chrome, firefox, … (for bot checks)
 ```
 
 Defaults: `~/Downloads` on macOS and Windows; on Linux `XDG_DOWNLOAD_DIR` is honoured, falling

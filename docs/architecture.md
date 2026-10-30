@@ -169,6 +169,25 @@ Parallelism, stated precisely because "chunked parallel" means two different thi
 Cancellation: `context.Cancel` plus a kill of the child's process group, so `ffmpeg`/`aria2c`
 children die too. `.part` files survive for `--continue`.
 
+### Where the output path comes from
+
+`-P temp:` means yt-dlp writes streams and the merge result into `.utub-tmp/` and only moves
+the finished file into the download folder at the very end. The engine therefore never derives
+the filename from the template; it reads yt-dlp's own lines in order:
+
+```
+[download] Destination: <temp>/title [id].f137.mp4     → stage video
+[download] Destination: <temp>/title [id].f140.m4a     → stage audio
+[Merger] Merging formats into "<temp>/title [id].mp4"  → stage merge
+[MoveFiles] Moving file "<temp>/…mp4" to "<out>/…mp4"  → authoritative path
+```
+
+If none of those appears, the job fails with `ErrNoOutputPath` rather than guessing.
+
+Progress percentages are clamped monotonic **within a stage**: yt-dlp revises
+`total_bytes` upward while it learns the stream size, so a raw downloaded/total ratio can dip,
+and a bar that retreats reads as a bug. The clamp resets when the stage changes.
+
 ## 8. H.264-only decision
 
 The video format list contains **only** `avc1` streams, paired with `mp4a` audio and
@@ -210,6 +229,7 @@ http_chunk_size      = "10M"
 downloader           = "auto"        # auto | builtin | aria2c
 filename_template    = "%(title)s [%(id)s].%(ext)s"
 default_audio_format = "original"    # original | m4a | mp3
+cookies_from_browser  = ""           # empty = off; yt-dlp browser name when YouTube demands a sign-in
 ```
 
 Download directory resolution order: `download_dir` → OS default (`~/Downloads`; Linux reads

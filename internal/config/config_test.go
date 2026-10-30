@@ -171,6 +171,8 @@ func TestValidate(t *testing.T) {
 			c.FilenameTemplate = "%(title)s.%(ext)s"
 			c.FilenameTemplate = "%(title)s.mp4"
 		}, "filename_template"},
+		{"cookies without spaces", func(c *Config) { c.CookiesFromBrowser = "firefox:default-release" }, ""},
+		{"cookies with spaces", func(c *Config) { c.CookiesFromBrowser = "safari profile" }, "cookies_from_browser"},
 	}
 
 	for _, tt := range tests {

@@ -34,7 +34,15 @@ var (
 	ErrGeoBlocked    = errors.New("core: video is blocked in this region")
 	ErrUnavailable   = errors.New("core: video is unavailable")
 	ErrHTTPStatus    = errors.New("core: youtube returned an http error")
+	// ErrMissingFFmpeg means ffmpeg is not on PATH, so streams cannot be merged.
 	ErrMissingFFmpeg = errors.New("core: ffmpeg not found")
+
+	// ErrMissingAria2c means downloader = "aria2c" but the binary is absent.
+	ErrMissingAria2c = errors.New("core: aria2c not found")
+
+	// ErrNoOutputPath means the download exited successfully but yt-dlp never
+	// reported where it put the file, so the engine refuses to guess.
+	ErrNoOutputPath = errors.New("core: yt-dlp did not report an output file")
 )
 
 // cliFailure is one classified yt-dlp failure: the sentinel a caller matches

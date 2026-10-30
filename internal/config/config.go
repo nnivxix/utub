@@ -57,6 +57,7 @@ type Config struct {
 	Downloader          string `toml:"downloader"`
 	FilenameTemplate    string `toml:"filename_template"`
 	DefaultAudioFormat  string `toml:"default_audio_format"`
+	CookiesFromBrowser  string `toml:"cookies_from_browser"`
 }
 
 // Default returns the configuration used when no file exists yet.
@@ -191,6 +192,14 @@ func (c Config) Validate() error {
 	}
 	if !strings.Contains(c.FilenameTemplate, "%(ext)s") {
 		return fmt.Errorf("config: filename_template must contain %%(ext)s, got %q", c.FilenameTemplate)
+	}
+
+	// Empty means "do not pass --cookies-from-browser". A browser name is
+	// passed straight to yt-dlp, so whitespace would silently split it into
+	// two argv elements.
+	if strings.ContainsAny(c.CookiesFromBrowser, " \t\r\n") {
+		return fmt.Errorf("config: cookies_from_browser must be a browser name without spaces, got %q",
+			c.CookiesFromBrowser)
 	}
 
 	return nil
