@@ -1,0 +1,21 @@
+# build output
+/bin/
+/desktop/build/
+/web/dist/
+/web/node_modules/
+
+# download scratch
+.utub-tmp/
+*.part
+*.ytdl
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# local env
+.env
+.env.local
