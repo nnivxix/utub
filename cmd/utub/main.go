@@ -1,9 +1,9 @@
 // Command utub converts and downloads YouTube and YouTube Music links.
 //
-// Only the diagnostic flags exist so far: --doctor reports the config location
-// and the external binaries the engine will shell out to. Step 7 replaces the
-// default branch with the Bubble Tea TUI; until then running utub with no
-// arguments explains that and exits.
+// With no flags it starts the interactive TUI. --doctor reports the config
+// location and the external binaries the engine shells out to; --version prints
+// the build stamp. The TUI currently runs against core.NoopManager, so it can
+// render and navigate before the engine lands in M1.
 package main
 
 import (
@@ -18,6 +18,8 @@ import (
 
 	"github.com/nnivxix/utub/internal/binmgr"
 	"github.com/nnivxix/utub/internal/config"
+	"github.com/nnivxix/utub/internal/core"
+	"github.com/nnivxix/utub/internal/tui"
 )
 
 // version is stamped at build time: -ldflags "-X main.version=1.2.3".
@@ -46,10 +48,36 @@ func main() {
 		os.Exit(2)
 
 	default:
-		fmt.Fprintln(os.Stderr, "utub: the interactive TUI arrives in step 7.")
-		fmt.Fprintln(os.Stderr, "      for now: utub --doctor | utub --version")
-		os.Exit(2)
+		os.Exit(runTUI())
 	}
+}
+
+// runTUI loads settings, resolves the download directory and hands the terminal
+// to the TUI. Returns a process exit code.
+func runTUI() int {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "utub: %v\n", err)
+		return 1
+	}
+
+	dir, err := cfg.EnsureDownloadDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "utub: %v\n", err)
+		return 1
+	}
+
+	deps := tui.Deps{
+		Manager: core.NoopManager{},
+		Config:  cfg,
+		DestDir: dir,
+		Version: version,
+	}
+	if err := tui.Run(deps); err != nil {
+		fmt.Fprintf(os.Stderr, "utub: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func usage() {
