@@ -70,7 +70,7 @@ type root struct {
 	probing  probingModel
 	formats  formatsModel
 	progress progressModel
-	settings settingsModel
+	settings *settingsModel
 
 	ref media.Ref // last link the user submitted
 
@@ -186,7 +186,9 @@ func (r *root) resize(msg tea.WindowSizeMsg) {
 	r.probing, _ = r.probing.Update(msg)
 	r.formats, _ = r.formats.Update(msg)
 	r.progress, _ = r.progress.Update(msg)
-	r.settings, _ = r.settings.Update(msg)
+	if r.settings != nil {
+		r.settings, _ = r.settings.Update(msg)
+	}
 }
 
 // navigate builds the destination screen from the current config and the

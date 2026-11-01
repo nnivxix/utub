@@ -357,7 +357,7 @@ func TestProgressFailedEventStopsControls(t *testing.T) {
 
 // ---------- settings ----------
 
-func settingsForTest(t *testing.T) settingsModel {
+func settingsForTest(t *testing.T) *settingsModel {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "config.toml")

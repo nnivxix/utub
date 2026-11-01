@@ -30,8 +30,8 @@ type settingsModel struct {
 	errText string
 }
 
-func newSettings(keys keyMap, cfg config.Config) settingsModel {
-	model := settingsModel{
+func newSettings(keys keyMap, cfg config.Config) *settingsModel {
+	model := &settingsModel{
 		keys:      keys,
 		cfg:       cfg,
 		dir:       cfg.DownloadDir,
@@ -111,14 +111,14 @@ func (s *settingsModel) build() {
 	).WithWidth(s.formWidth())
 }
 
-func (s settingsModel) Init() tea.Cmd {
+func (s *settingsModel) Init() tea.Cmd {
 	if s.form == nil {
 		return nil
 	}
 	return s.form.Init()
 }
 
-func (s settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
+func (s *settingsModel) Update(msg tea.Msg) (*settingsModel, tea.Cmd) {
 	// The router forwards window sizes to every screen, including the ones
 	// that have never been opened. Without a form there is nothing to lay out.
 	if s.form == nil {
@@ -152,7 +152,7 @@ func (s settingsModel) Update(msg tea.Msg) (settingsModel, tea.Cmd) {
 // save validates the working copy, proves the directory is writable, then
 // writes config.toml atomically. A failure leaves the form on screen with the
 // reason, so nothing is half-applied.
-func (s settingsModel) save() (settingsModel, tea.Cmd) {
+func (s *settingsModel) save() (*settingsModel, tea.Cmd) {
 	cfg := s.cfg
 	cfg.DownloadDir = strings.TrimSpace(s.dir)
 	cfg.CookiesFromBrowser = strings.TrimSpace(s.cookies)
@@ -186,7 +186,7 @@ func (s settingsModel) save() (settingsModel, tea.Cmd) {
 	return s, func() tea.Msg { return configSavedMsg{cfg: cfg, dir: dir} }
 }
 
-func (s settingsModel) View() string {
+func (s *settingsModel) View() string {
 	if s.form == nil {
 		return ""
 	}
