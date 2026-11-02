@@ -91,6 +91,24 @@ make tui && ./bin/utub
 
 There is no runtime dependency on Node, Wails or GTK for the CLI/TUI binary.
 
+### Update
+
+Rerun the install command — it replaces the binary in place:
+
+```bash
+go install github.com/nnivxix/utub/cmd/utub@latest
+```
+
+Close any running `utub` first on Windows. To stay on a specific release, pin it:
+
+```bash
+go install github.com/nnivxix/utub/cmd/utub@v0.1.0
+```
+
+Prebuilt archives for machines without Go are on the
+[releases page](https://github.com/nnivxix/utub/releases); watch the repository's releases
+to be notified of new versions.
+
 ## Usage
 
 ```bash
