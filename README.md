@@ -6,7 +6,7 @@ Paste a link, pick a format, download it — chunked, in parallel, straight to `
 No browser, no ads, no Electron.
 
 ```
-utub dev ────────────────────────────────────────────────── ~/Downloads
+utub 0.1.0 ──────────────────────────────────────────────── ~/Downloads
 Paste a YouTube or YouTube Music link
 
 ╭──────────────────────────────────────────────────────────────────╮
@@ -17,7 +17,7 @@ Paste a YouTube or YouTube Music link
 enter select · ctrl+v paste link · ctrl+u clear · ctrl+s settings · esc back
 ```
 
-> **⚠️ BETA - but usable**
+> **⚠️ BETA**
 >
 > The interface is built (home, format picker, progress, settings) and navigation works, but it
 > runs on **demo data: nothing is downloaded**. The engine — probe, download, cancel — is the

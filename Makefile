@@ -1,5 +1,7 @@
-BIN := bin
-GO  ?= go
+BIN     := bin
+GO      ?= go
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X main.version=$(VERSION)
 
 .PHONY: all tui web server desktop run doctor test fmt vet clean
 
@@ -7,13 +9,13 @@ all: tui web server desktop
 
 tui:
 	@mkdir -p $(BIN)
-	$(GO) build -trimpath -o $(BIN)/utub ./cmd/utub
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/utub ./cmd/utub
 
 run: tui
 	./$(BIN)/utub
 
-doctor:
-	$(GO) run ./cmd/utub --doctor
+doctor: tui
+	./$(BIN)/utub --doctor
 
 web:
 	@echo "not yet — M5 (Vue 3 SPA in web/)"

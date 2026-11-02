@@ -22,7 +22,10 @@ import (
 )
 
 // version is stamped at build time: -ldflags "-X main.version=1.2.3".
+// resolveVersion fills it in for builds that cannot pass flags.
 var version = "dev"
+
+func init() { version = resolveVersion(version, buildInfo()) }
 
 // doctorTimeout bounds the whole report; each individual probe has its own
 // shorter timeout inside binmgr.
