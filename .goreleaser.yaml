@@ -1,0 +1,51 @@
+version: 2
+
+project_name: utub
+
+builds:
+  - id: utub
+    main: ./cmd/utub
+    binary: utub
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+# One fat Mach-O instead of separate amd64 and arm64 downloads.
+universal_binaries:
+  - id: utub
+    replace: true
+
+archives:
+  - id: utub
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^test:"
