@@ -16,7 +16,7 @@ Paste a YouTube or YouTube Music link
 
 enter select · ctrl+v paste link · ctrl+u clear · ctrl+s settings · esc back
 ```
-
+<!--
 > **⚠️ BETA**
 >
 > The interface is built (home, format picker, progress, settings) and navigation works, but it
@@ -25,6 +25,7 @@ enter select · ctrl+v paste link · ctrl+u clear · ctrl+s settings · esc back
 >
 > Progress and the full task list live in [PLAN.md](PLAN.md); the design contract is
 > [docs/architecture.md](docs/architecture.md). See also [Roadmap](#roadmap).
+-->
 
 ---
 
